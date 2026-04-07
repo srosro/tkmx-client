@@ -8,6 +8,7 @@ require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const USERNAME = process.env.USERNAME;
 const SERVER_URL = process.env.SERVER_URL;
+const TEAM = process.env.TEAM || "default";
 
 // Resolve ccusage binary — launchd/systemd don't inherit the user's shell PATH
 const CCUSAGE_CANDIDATES = [
@@ -30,7 +31,7 @@ const sinceStr =
   (since.getMonth() + 1).toString().padStart(2, "0") +
   since.getDate().toString().padStart(2, "0");
 
-console.log(`[${new Date().toISOString()}] Collecting usage since ${sinceStr} for ${USERNAME}`);
+console.log(`[${new Date().toISOString()}] Collecting usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
 
 let raw;
 try {
@@ -44,7 +45,7 @@ try {
 }
 
 const parsed = JSON.parse(raw);
-const payload = JSON.stringify({ username: USERNAME, data: parsed.daily });
+const payload = JSON.stringify({ username: USERNAME, team: TEAM, data: parsed.daily });
 
 const url = new URL("/api/usage", SERVER_URL);
 const transport = url.protocol === "https:" ? https : http;
