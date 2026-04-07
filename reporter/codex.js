@@ -29,9 +29,12 @@ function collectCodexUsage(sinceDateStr) {
   const sinceTs = Math.floor(new Date(y, m, d).getTime() / 1000);
 
   const db = new Database(dbPath, { readonly: true });
+  // Schema varies: newer versions have `model`, older have `model_provider`
+  const cols = db.pragma("table_info(threads)").map((c) => c.name);
+  const modelCol = cols.includes("model") ? "model" : "model_provider";
   const rows = db
     .prepare(
-      `SELECT model, tokens_used, created_at
+      `SELECT ${modelCol} AS model, tokens_used, created_at
        FROM threads
        WHERE created_at >= ? AND tokens_used > 0`
     )
