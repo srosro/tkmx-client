@@ -58,11 +58,13 @@ TOOLS=comma,separated,tools
 | `USERNAME` | Yes | Your registered username |
 | `API_KEY` | Yes | The key returned by `/api/register` |
 | `TEAM` | No | Your team name (default: `default`) |
-| `TOOLS` | No | Comma-separated skills, integrations, and projects you use (see below) |
+| `TOOLS` | No | Comma-separated tools you **actively use daily** (see below) |
 
 #### Tools
 
 The `TOOLS` field tags your profile with the AI coding skills, integrations, and projects you use. These show as badges on the leaderboard and feed the "Most Popular Projects" ranking.
+
+**Only list tools you actually use on a regular basis.** This is not a list of everything you've tried — it's what you rely on day-to-day. If you installed something once and didn't stick with it, leave it out.
 
 Some examples:
 
@@ -73,8 +75,6 @@ Some examples:
 | [paperclip](https://github.com/paperclipai/paperclip) | AI coding agent framework |
 | [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) | Codex CLI enhancements |
 | [cmux](https://cmux.com/) | AI coding multiplexer |
-
-Add whatever you actually use — the leaderboard tracks what's popular.
 
 ### 5. Test it
 
