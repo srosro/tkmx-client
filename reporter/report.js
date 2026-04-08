@@ -39,28 +39,33 @@ if (!USERNAME || !API_KEY) {
   process.exit(1);
 }
 
-// Collect machine config (opt-in)
+// Collect machine config (opt-in), only send when it changes
 let machineConfig = null;
 if (process.env.REPORT_MACHINE_CONFIG === "true") {
-  machineConfig = { hostname: os.hostname(), os: os.platform() + " " + os.release(), cpu: "", memory_gb: Math.round(os.totalmem() / 1e9) };
-  // CPU model (first core)
+  const cfg = { hostname: os.hostname(), os: os.platform() + " " + os.release(), cpu: "", memory_gb: Math.round(os.totalmem() / 1e9) };
   const cpus = os.cpus();
-  if (cpus.length > 0) machineConfig.cpu = cpus[0].model.trim() + " (" + cpus.length + " cores)";
-  // Codex version
-  try { machineConfig.codex_version = execFileSync("codex", ["--version"], { encoding: "utf-8", timeout: 5000 }).trim(); } catch {}
-  // Claude Code skills
+  if (cpus.length > 0) cfg.cpu = cpus[0].model.trim() + " (" + cpus.length + " cores)";
+  try { cfg.codex_version = execFileSync("codex", ["--version"], { encoding: "utf-8", timeout: 5000 }).trim(); } catch {}
   const pluginsDir = path.join(os.homedir(), ".claude", "plugins", "cache");
   if (fs.existsSync(pluginsDir)) {
     const skills = [];
     for (const org of fs.readdirSync(pluginsDir)) {
       const orgPath = path.join(pluginsDir, org);
       if (fs.statSync(orgPath).isDirectory()) {
-        for (const plugin of fs.readdirSync(orgPath)) {
-          skills.push(plugin);
-        }
+        for (const plugin of fs.readdirSync(orgPath)) skills.push(plugin);
       }
     }
-    if (skills.length > 0) machineConfig.claude_skills = skills;
+    if (skills.length > 0) cfg.claude_skills = skills;
+  }
+  // Only send if config changed since last report
+  const cfgJson = JSON.stringify(cfg);
+  const cfgHash = crypto.createHash("sha256").update(cfgJson).digest("hex").slice(0, 16);
+  const hashFile = path.join(__dirname, "..", ".machine_config_hash");
+  const lastHash = fs.existsSync(hashFile) ? fs.readFileSync(hashFile, "utf-8").trim() : "";
+  if (cfgHash !== lastHash) {
+    machineConfig = cfg;
+    fs.writeFileSync(hashFile, cfgHash);
+    console.log("  Machine config changed, will report");
   }
 }
 
