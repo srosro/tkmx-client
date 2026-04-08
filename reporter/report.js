@@ -15,6 +15,7 @@ const SERVER_URL = process.env.SERVER_URL || "https://www.deepspring.ai";
 const TEAM = process.env.TEAM || "default";
 const API_KEY = process.env.API_KEY;
 const TOOLS = process.env.TOOLS || "";
+const COMMUNITIES = process.env.COMMUNITIES || "";
 const ABOUT = process.env.ABOUT || "";
 
 // Stable machine identifier — auto-generated on first run
@@ -160,7 +161,16 @@ async function main() {
     return;
   }
 
-  const body = { username: USERNAME, team: TEAM, tools: TOOLS, about: ABOUT, client_id: CLIENT_ID, report_days: REPORT_DAYS, data: mergedDaily };
+  const body = {
+    username: USERNAME,
+    team: TEAM,
+    tools: TOOLS,
+    communities: COMMUNITIES,
+    about: ABOUT,
+    client_id: CLIENT_ID,
+    report_days: REPORT_DAYS,
+    data: mergedDaily,
+  };
   const machineConfig = collectMachineConfig();
   if (machineConfig) body.machine_config = machineConfig;
 

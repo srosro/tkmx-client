@@ -57,6 +57,7 @@ cp .env.example .env
 | `API_KEY` | Yes | The key returned by `/api/register` |
 | `TEAM` | No | Your team name (default: `default`) |
 | `TOOLS` | No | Comma-separated tools/projects you use daily (see [Tools](#tools)) |
+| `COMMUNITIES` | No | Comma-separated community tags shown on your profile and leaderboard |
 | `ABOUT` | No | Bio, config details, and links shown on your [profile page](#profile-page) |
 | `REPORT_DAYS` | No | Days of history to report (default: `28`). See [Backfill & Optimization](#backfill--optimization) |
 | `REPORT_MACHINE_CONFIG` | No | Set to `true` to share machine info (OS, CPU, memory, installed skills) on your profile. No prompts, code, or keys are ever sent. |
@@ -145,6 +146,7 @@ Each user gets a shareable profile at `https://www.deepspring.ai/user/YOUR_NAME`
 - Model breakdown by tokens
 - Daily usage chart (28 days)
 - Tools/projects badges
+- Community badges
 - Number of reporting machines
 - Your bio from the `ABOUT` field
 
@@ -155,6 +157,12 @@ ABOUT="ML engineer. My Claude Code setup: https://blog.example.com/my-ai-workflo
 ```
 
 URLs are auto-linked on the profile page.
+
+Community tags are configured separately so they can be clicked as filters on the leaderboard:
+
+```
+COMMUNITIES=#bloomberg-ai-engineering,#agentcribs-community
+```
 
 ## Tools
 
