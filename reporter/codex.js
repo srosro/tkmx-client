@@ -14,8 +14,15 @@ const DEFAULT_RATE = 3.00; // per million tokens
 
 function getCodexDbPath() {
   const home = process.env.CODEX_HOME || path.join(process.env.HOME, ".codex");
-  const dbPath = path.join(home, "state_5.sqlite");
-  return fs.existsSync(dbPath) ? dbPath : null;
+  if (!fs.existsSync(home)) return null;
+  const files = fs.readdirSync(home).filter((f) => /^state_\d+\.sqlite$/.test(f));
+  if (files.length === 0) return null;
+  files.sort((a, b) => {
+    const numA = parseInt(a.match(/\d+/)[0]);
+    const numB = parseInt(b.match(/\d+/)[0]);
+    return numB - numA;
+  });
+  return path.join(home, files[0]);
 }
 
 function collectCodexUsage(sinceDateStr) {

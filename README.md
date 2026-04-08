@@ -22,7 +22,9 @@ npm install
 
 ### 3. Register your username
 
-Pick a unique username and provide your email. First come, first served — once registered, only you can submit data for that name. Your email is kept private and never displayed.
+Pick a unique username and provide your email. First come, first served — once registered, only you can submit data for that name.
+
+Your email is **required** at registration but kept private — it is never displayed on the leaderboard or returned by any API. It is stored server-side for account contact purposes only.
 
 ```
 curl -s -X POST https://www.deepspring.ai/api/register \
@@ -37,6 +39,8 @@ This returns your API key:
 ```
 
 Save this key. It cannot be retrieved later.
+
+> **Note:** Email is only collected during registration. It does not go in your `.env` file.
 
 ### 4. Configure `.env`
 

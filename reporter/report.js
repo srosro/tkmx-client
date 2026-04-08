@@ -4,6 +4,7 @@ const path = require("node:path");
 const http = require("node:http");
 const https = require("node:https");
 const { collectCodexUsage } = require("./codex");
+const { mergeDailyUsage } = require("./merge");
 
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
@@ -65,17 +66,7 @@ try {
   console.error("  Codex collection failed (continuing with claude only):", err.message);
 }
 
-// Merge: combine days that appear in both
-const dayMap = {};
-for (const day of claudeDaily) {
-  dayMap[day.date] = dayMap[day.date] || { date: day.date, modelBreakdowns: [] };
-  dayMap[day.date].modelBreakdowns.push(...day.modelBreakdowns);
-}
-for (const day of codexDaily) {
-  dayMap[day.date] = dayMap[day.date] || { date: day.date, modelBreakdowns: [] };
-  dayMap[day.date].modelBreakdowns.push(...day.modelBreakdowns);
-}
-const mergedDaily = Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date));
+const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily);
 
 if (mergedDaily.length === 0) {
   console.log("No usage data to report.");

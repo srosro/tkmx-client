@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "report": "node reporter/report.js",
-    "install-service": "node reporter/install.js"
+    "install-service": "node reporter/install.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
