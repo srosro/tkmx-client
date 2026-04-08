@@ -19,8 +19,6 @@
     h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.25rem; }
 
     .streak-banner {
-      background: linear-gradient(135deg, #1a1208 0%, #2d1b06 100%);
-      border: 1px solid #f0c040;
       border-radius: 8px;
       padding: 1.25rem 1.5rem;
       margin-bottom: 2rem;
@@ -28,10 +26,10 @@
       align-items: center;
       gap: 1rem;
     }
-    .streak-fire { font-size: 2.5rem; line-height: 1; }
+    .streak-icon { font-size: 2.5rem; line-height: 1; }
     .streak-text { font-size: 0.95rem; color: #e6edf3; }
-    .streak-text strong { color: #f0c040; }
-    .streak-count { font-size: 1.8rem; font-weight: 700; color: #f0c040; margin-left: auto; }
+    .streak-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.25rem; }
+    .streak-count { font-size: 1.8rem; font-weight: 700; margin-left: auto; }
 
     .section-label {
       font-size: 0.8rem;
@@ -72,15 +70,17 @@
       display: inline-flex;
       align-items: center;
       gap: 3px;
-      background: #2d1b06;
-      border: 1px solid #f0c040;
       border-radius: 4px;
       padding: 1px 6px;
       font-size: 0.7rem;
-      color: #f0c040;
       margin-left: 6px;
       vertical-align: middle;
     }
+    .streak-heating-up { background: #2d1b06; border: 1px solid #f0c040; color: #f0c040; }
+    .streak-on-fire { background: #2d2206; border: 1px solid #e3b341; color: #e3b341; }
+    .streak-unstoppable { background: #2d0b0b; border: 1px solid #f85149; color: #f85149; }
+    .streak-dominant { background: #1b062d; border: 1px solid #bc8cff; color: #bc8cff; }
+    .streak-legendary { background: #062d2d; border: 1px solid #39d2c0; color: #39d2c0; }
     .runner-up { color: #7d8590; font-size: 0.8rem; }
 
     .no-data { color: #484f58; font-style: italic; }
@@ -118,8 +118,11 @@
   </div>
 
   <div id="streakBanner" class="streak-banner" style="display:none">
-    <span class="streak-fire">🔥</span>
-    <span class="streak-text" id="streakText"></span>
+    <span class="streak-icon" id="streakIcon">🔥</span>
+    <div>
+      <div class="streak-label" id="streakLabel"></div>
+      <span class="streak-text" id="streakText"></span>
+    </div>
     <span class="streak-count" id="streakCount"></span>
   </div>
 
@@ -148,6 +151,14 @@
     function dayOfWeek(iso) {
       const d = new Date(iso + "T12:00:00");
       return d.toLocaleDateString("en-US", { weekday: "short" });
+    }
+
+    function streakTier(count) {
+      if (count >= 30) return { icon: "💎", label: "Legendary", css: "streak-legendary", color: "#39d2c0", bg: "linear-gradient(135deg, #061d1d 0%, #062d2d 100%)", border: "#39d2c0" };
+      if (count >= 14) return { icon: "👑", label: "Dominant", css: "streak-dominant", color: "#bc8cff", bg: "linear-gradient(135deg, #120622 0%, #1b062d 100%)", border: "#bc8cff" };
+      if (count >= 7)  return { icon: "💀", label: "Unstoppable", css: "streak-unstoppable", color: "#f85149", bg: "linear-gradient(135deg, #1d0808 0%, #2d0b0b 100%)", border: "#f85149" };
+      if (count >= 4)  return { icon: "⚡", label: "On Fire", css: "streak-on-fire", color: "#e3b341", bg: "linear-gradient(135deg, #1d1806 0%, #2d2206 100%)", border: "#e3b341" };
+      return { icon: "🔥", label: "Heating Up", css: "streak-heating-up", color: "#f0c040", bg: "linear-gradient(135deg, #1a1208 0%, #2d1b06 100%)", border: "#f0c040" };
     }
 
     function setDays(days) {
@@ -255,10 +266,17 @@
       const activeEntries = Object.entries(active);
       if (activeEntries.length > 0) {
         const [user, count] = activeEntries[0];
+        const tier = streakTier(count);
         banner.style.display = "";
+        banner.style.background = tier.bg;
+        banner.style.border = "1px solid " + tier.border;
+        document.getElementById("streakIcon").textContent = tier.icon;
+        document.getElementById("streakLabel").textContent = tier.label;
+        document.getElementById("streakLabel").style.color = tier.color;
         document.getElementById("streakText").innerHTML =
-          "<strong>" + user + "</strong> won top of the day <strong>" + count + " days in a row</strong>. BURN all your tokens to take them down.";
-        document.getElementById("streakCount").textContent = count + "🔥";
+          "<strong style='color:" + tier.color + "'>" + user + "</strong> won top of the day <strong style='color:" + tier.color + "'>" + count + " days in a row</strong>. BURN all your tokens to take them down.";
+        document.getElementById("streakCount").textContent = count + tier.icon;
+        document.getElementById("streakCount").style.color = tier.color;
       } else {
         banner.style.display = "none";
       }
@@ -303,7 +321,8 @@
         if (day.winner) {
           let nameHtml = '<span class="winner-name">🏆 ' + day.winner.username + "</span>";
           if (streak.count >= 2) {
-            nameHtml += ' <span class="streak-badge">🔥 ' + streak.count + "</span>";
+            const tier = streakTier(streak.count);
+            nameHtml += ' <span class="streak-badge ' + tier.css + '">' + tier.icon + " " + streak.count + "</span>";
           }
           html += "<td>" + nameHtml + "</td>";
           html += '<td class="runner-up">' + (day.runnerUp ? day.runnerUp.username + " (" + formatTokens(day.runnerUp.tokens) + ")" : "") + "</td>";
