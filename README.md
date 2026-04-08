@@ -57,7 +57,7 @@ cp .env.example .env
 | `API_KEY` | Yes | The key returned by `/api/register` |
 | `TEAM` | No | Your team name (default: `default`) |
 | `TOOLS` | No | Comma-separated tools/projects you use daily (see [Tools](#tools)) |
-| `COMMUNITIES` | No | Comma-separated community tags shown on your profile and leaderboard |
+| `COMMUNITIES` | No | Comma-separated community names shown on your profile and leaderboard |
 | `ABOUT` | No | Bio, config details, and links shown on your [profile page](#profile-page) |
 | `REPORT_DAYS` | No | Days of history to report (default: `28`). See [Backfill & Optimization](#backfill--optimization) |
 | `REPORT_MACHINE_CONFIG` | No | Set to `true` to share machine info (OS, CPU, memory, installed skills) on your profile. No prompts, code, or keys are ever sent. |
@@ -107,11 +107,12 @@ Your existing config (credentials, `CLIENT_ID`) is preserved — `git pull` neve
 
 ### What's new
 
-Add these to your `.env` if you haven't already:
+If you're updating an existing install, refer to the config table above and add any new `.env` values you don't already have:
 
 | Setting | What it does |
 |---------|-------------|
 | `REPORT_MACHINE_CONFIG=true` | Shares your machine setup (OS, CPU, memory, installed skills) on your [profile page](#profile-page). **No prompts, code, conversation history, or API keys are ever sent.** |
+| `COMMUNITIES=bloomberg-ai-engineering,agentcribs-community` | Shows community tags on your profile and leaderboard. Use plain names, not `#`-prefixed values. |
 | `ABOUT="..."` | Bio, config details, and links shown on your profile. Share your setup — blog posts, tweets, or videos where you've discussed your workflow. URLs are auto-linked. |
 | `REPORT_DAYS=1` | Only send the last day each cycle instead of 28. Recommended after your first sync. |
 
@@ -161,7 +162,7 @@ URLs are auto-linked on the profile page.
 Community tags are configured separately so they can be clicked as filters on the leaderboard:
 
 ```
-COMMUNITIES=#bloomberg-ai-engineering,#agentcribs-community
+COMMUNITIES=bloomberg-ai-engineering,agentcribs-community
 ```
 
 ## Tools
