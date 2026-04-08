@@ -1,6 +1,7 @@
 const { execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const https = require("node:https");
@@ -36,6 +37,31 @@ const CCUSAGE = CCUSAGE_CANDIDATES.find((p) => fs.existsSync(p)) || "ccusage";
 if (!USERNAME || !API_KEY) {
   console.error("USERNAME and API_KEY must be set in .env");
   process.exit(1);
+}
+
+// Collect machine config (opt-in)
+let machineConfig = null;
+if (process.env.REPORT_MACHINE_CONFIG === "true") {
+  machineConfig = { hostname: os.hostname(), os: os.platform() + " " + os.release(), cpu: "", memory_gb: Math.round(os.totalmem() / 1e9) };
+  // CPU model (first core)
+  const cpus = os.cpus();
+  if (cpus.length > 0) machineConfig.cpu = cpus[0].model.trim() + " (" + cpus.length + " cores)";
+  // Codex version
+  try { machineConfig.codex_version = execFileSync("codex", ["--version"], { encoding: "utf-8", timeout: 5000 }).trim(); } catch {}
+  // Claude Code skills
+  const pluginsDir = path.join(os.homedir(), ".claude", "plugins", "cache");
+  if (fs.existsSync(pluginsDir)) {
+    const skills = [];
+    for (const org of fs.readdirSync(pluginsDir)) {
+      const orgPath = path.join(pluginsDir, org);
+      if (fs.statSync(orgPath).isDirectory()) {
+        for (const plugin of fs.readdirSync(orgPath)) {
+          skills.push(plugin);
+        }
+      }
+    }
+    if (skills.length > 0) machineConfig.claude_skills = skills;
+  }
 }
 
 const REPORT_DAYS = parseInt(process.env.REPORT_DAYS) || 28;
@@ -85,7 +111,9 @@ if (mergedDaily.length === 0) {
   process.exit(0);
 }
 
-const payload = JSON.stringify({ username: USERNAME, team: TEAM, tools: TOOLS, about: ABOUT, client_id: CLIENT_ID, report_days: REPORT_DAYS, data: mergedDaily });
+const body = { username: USERNAME, team: TEAM, tools: TOOLS, about: ABOUT, client_id: CLIENT_ID, report_days: REPORT_DAYS, data: mergedDaily };
+if (machineConfig) body.machine_config = machineConfig;
+const payload = JSON.stringify(body);
 
 const url = new URL("/api/usage", SERVER_URL);
 const transport = url.protocol === "https:" ? https : http;
