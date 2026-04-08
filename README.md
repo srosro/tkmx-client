@@ -22,12 +22,12 @@ npm install
 
 ### 3. Register your username
 
-Pick a unique username. First come, first served — once registered, only you can submit data for that name.
+Pick a unique username and provide your email. First come, first served — once registered, only you can submit data for that name. Your email is kept private and never displayed.
 
 ```
 curl -s -X POST https://www.deepspring.ai/api/register \
   -H 'Content-Type: application/json' \
-  -d '{"username":"YOUR_NAME"}'
+  -d '{"username":"YOUR_NAME", "email":"you@example.com"}'
 ```
 
 This returns your API key:
