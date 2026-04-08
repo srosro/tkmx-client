@@ -176,7 +176,7 @@ describe("collectCodexUsage", () => {
     assert.equal(apr6.modelBreakdowns.length, 1);
   });
 
-  it("sends zero cost (server-side estimation)", () => {
+  it("omits cost (server-side estimation)", () => {
     const db = createDb(tmpDir, "state_5.sqlite", SCHEMA_NEW);
     const ts = Math.floor(new Date(2026, 3, 5, 12, 0, 0).getTime() / 1000);
     db.prepare("INSERT INTO threads (id, model, tokens_used, created_at) VALUES (?, ?, ?, ?)")
@@ -184,6 +184,6 @@ describe("collectCodexUsage", () => {
     db.close();
 
     const result = collectCodexUsage("20260401");
-    assert.equal(result[0].modelBreakdowns[0].cost, 0);
+    assert.equal(result[0].modelBreakdowns[0].cost, undefined);
   });
 });

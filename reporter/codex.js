@@ -66,7 +66,6 @@ function collectCodexUsage(sinceDateStr) {
       cacheCreationTokens: 0,
       cacheReadTokens: 0,
       totalTokens: entry.tokens,
-      cost: 0,
       source: "codex",
     });
   }
