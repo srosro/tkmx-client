@@ -38,15 +38,16 @@ if (!USERNAME || !API_KEY) {
   process.exit(1);
 }
 
-// 28 days ago in YYYYMMDD format
+const REPORT_DAYS = parseInt(process.env.REPORT_DAYS) || 28;
+
 const since = new Date();
-since.setDate(since.getDate() - 28);
+since.setDate(since.getDate() - REPORT_DAYS);
 const sinceStr =
   since.getFullYear().toString() +
   (since.getMonth() + 1).toString().padStart(2, "0") +
   since.getDate().toString().padStart(2, "0");
 
-console.log(`[${new Date().toISOString()}] Collecting usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
+console.log(`[${new Date().toISOString()}] Collecting ${REPORT_DAYS}d usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
 
 // Collect Claude usage
 let claudeDaily = [];
@@ -84,7 +85,7 @@ if (mergedDaily.length === 0) {
   process.exit(0);
 }
 
-const payload = JSON.stringify({ username: USERNAME, team: TEAM, tools: TOOLS, about: ABOUT, client_id: CLIENT_ID, data: mergedDaily });
+const payload = JSON.stringify({ username: USERNAME, team: TEAM, tools: TOOLS, about: ABOUT, client_id: CLIENT_ID, report_days: REPORT_DAYS, data: mergedDaily });
 
 const url = new URL("/api/usage", SERVER_URL);
 const transport = url.protocol === "https:" ? https : http;
