@@ -39,9 +39,9 @@ if (!USERNAME || !API_KEY) {
   process.exit(1);
 }
 
-// Collect machine config (opt-in), only send when it changes
-let machineConfig = null;
-if (process.env.REPORT_MACHINE_CONFIG === "true") {
+function collectMachineConfig() {
+  if (process.env.REPORT_MACHINE_CONFIG !== "true") return null;
+
   const cfg = { hostname: os.hostname(), os: os.platform() + " " + os.release(), cpu: "", memory_gb: Math.round(os.totalmem() / 1e9) };
   const cpus = os.cpus();
   if (cpus.length > 0) cfg.cpu = cpus[0].model.trim() + " (" + cpus.length + " cores)";
@@ -63,90 +63,111 @@ if (process.env.REPORT_MACHINE_CONFIG === "true") {
   const hashFile = path.join(__dirname, "..", ".machine_config_hash");
   const lastHash = fs.existsSync(hashFile) ? fs.readFileSync(hashFile, "utf-8").trim() : "";
   if (cfgHash !== lastHash) {
-    machineConfig = cfg;
     fs.writeFileSync(hashFile, cfgHash);
     console.log("  Machine config changed, will report");
+    return cfg;
   }
+  return null;
 }
 
-const REPORT_DAYS = parseInt(process.env.REPORT_DAYS) || 28;
+function postUsage(payload) {
+  const url = new URL("/api/usage", SERVER_URL);
+  const transport = url.protocol === "https:" ? https : http;
 
-const since = new Date();
-since.setDate(since.getDate() - REPORT_DAYS);
-const sinceStr =
-  since.getFullYear().toString() +
-  (since.getMonth() + 1).toString().padStart(2, "0") +
-  since.getDate().toString().padStart(2, "0");
-
-console.log(`[${new Date().toISOString()}] Collecting ${REPORT_DAYS}d usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
-
-// Collect Claude usage
-let claudeDaily = [];
-try {
-  const raw = execFileSync(CCUSAGE, ["--json", "--offline", "--since", sinceStr], {
-    encoding: "utf-8",
-    timeout: 30000,
+  return new Promise((resolve, reject) => {
+    const req = transport.request(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+          "Authorization": `Bearer ${API_KEY}`,
+        },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => (body += chunk));
+        res.on("end", () => {
+          console.log(`[${new Date().toISOString()}] Server responded ${res.statusCode}: ${body}`);
+          if (res.statusCode !== 200) {
+            reject(new Error(`Server returned ${res.statusCode}: ${body}`));
+          } else {
+            resolve();
+          }
+        });
+      }
+    );
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
   });
-  const parsed = JSON.parse(raw);
-  claudeDaily = parsed.daily || [];
-  // Tag each breakdown with source
-  for (const day of claudeDaily) {
-    for (const m of day.modelBreakdowns) {
-      m.source = "claude";
-    }
-  }
-  console.log(`  Claude: ${claudeDaily.length} days`);
-} catch (err) {
-  console.error("  ccusage failed (continuing with codex only):", err.message);
 }
 
-// Collect Codex usage
-let codexDaily = [];
-try {
-  codexDaily = collectCodexUsage(sinceStr);
-  console.log(`  Codex: ${codexDaily.length} days`);
-} catch (err) {
-  console.error("  Codex collection failed (continuing with claude only):", err.message);
-}
+async function main() {
+  const REPORT_DAYS = parseInt(process.env.REPORT_DAYS) || 28;
 
-const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily);
+  const since = new Date();
+  since.setDate(since.getDate() - REPORT_DAYS);
+  const sinceStr =
+    since.getFullYear().toString() +
+    (since.getMonth() + 1).toString().padStart(2, "0") +
+    since.getDate().toString().padStart(2, "0");
 
-if (mergedDaily.length === 0) {
-  console.log("No usage data to report.");
-  process.exit(0);
-}
+  console.log(`[${new Date().toISOString()}] Collecting ${REPORT_DAYS}d usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
 
-const body = { username: USERNAME, team: TEAM, tools: TOOLS, about: ABOUT, client_id: CLIENT_ID, report_days: REPORT_DAYS, data: mergedDaily };
-if (machineConfig) body.machine_config = machineConfig;
-const payload = JSON.stringify(body);
-
-const url = new URL("/api/usage", SERVER_URL);
-const transport = url.protocol === "https:" ? https : http;
-
-const req = transport.request(
-  url,
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Content-Length": Buffer.byteLength(payload),
-      "Authorization": `Bearer ${API_KEY}`,
-    },
-  },
-  (res) => {
-    let body = "";
-    res.on("data", (chunk) => (body += chunk));
-    res.on("end", () => {
-      console.log(`[${new Date().toISOString()}] Server responded ${res.statusCode}: ${body}`);
-      if (res.statusCode !== 200) process.exit(1);
+  // Collect Claude usage
+  let claudeDaily = [];
+  let claudeErr = null;
+  try {
+    const raw = execFileSync(CCUSAGE, ["--json", "--offline", "--since", sinceStr], {
+      encoding: "utf-8",
+      timeout: 30000,
     });
+    const parsed = JSON.parse(raw);
+    claudeDaily = parsed.daily || [];
+    // Tag each breakdown with source
+    for (const day of claudeDaily) {
+      for (const m of day.modelBreakdowns) {
+        m.source = "claude";
+      }
+    }
+    console.log(`  Claude: ${claudeDaily.length} days`);
+  } catch (err) {
+    claudeErr = err;
+    console.error("  ccusage failed (continuing with codex only):", err.message);
   }
-);
 
-req.on("error", (err) => {
-  console.error(`[${new Date().toISOString()}] Request failed:`, err.message);
+  // Collect Codex usage
+  let codexDaily = [];
+  let codexErr = null;
+  try {
+    codexDaily = collectCodexUsage(sinceStr);
+    console.log(`  Codex: ${codexDaily.length} days`);
+  } catch (err) {
+    codexErr = err;
+    console.error("  Codex collection failed (continuing with claude only):", err.message);
+  }
+
+  if (claudeErr && codexErr) {
+    throw new Error("Both Claude and Codex collection failed");
+  }
+
+  const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily);
+
+  if (mergedDaily.length === 0) {
+    console.log("No usage data to report.");
+    return;
+  }
+
+  const body = { username: USERNAME, team: TEAM, tools: TOOLS, about: ABOUT, client_id: CLIENT_ID, report_days: REPORT_DAYS, data: mergedDaily };
+  const machineConfig = collectMachineConfig();
+  if (machineConfig) body.machine_config = machineConfig;
+
+  await postUsage(JSON.stringify(body));
+}
+
+main().catch((err) => {
+  console.error(`[${new Date().toISOString()}] Fatal:`, err.message);
   process.exit(1);
 });
-
-req.write(payload);
-req.end();
