@@ -57,7 +57,7 @@ cp .env.example .env
 | `API_KEY` | Yes | The key returned by `/api/register` |
 | `TEAM` | No | Your team name (default: `default`) |
 | `TOOLS` | No | Comma-separated tools/projects you use daily (see [Tools](#tools)) |
-| `ABOUT` | No | Bio/contact info shown on your [profile page](#profile-page) |
+| `ABOUT` | No | Bio, config details, and links shown on your [profile page](#profile-page) |
 | `REPORT_DAYS` | No | Days of history to report (default: `28`). See [Backfill & Optimization](#backfill--optimization) |
 | `REPORT_MACHINE_CONFIG` | No | Set to `true` to share machine info (OS, CPU, memory, installed skills) on your profile. No prompts, code, or keys are ever sent. |
 
@@ -111,7 +111,7 @@ Add these to your `.env` if you haven't already:
 | Setting | What it does |
 |---------|-------------|
 | `REPORT_MACHINE_CONFIG=true` | Shares your machine setup (OS, CPU, memory, installed skills) on your [profile page](#profile-page). **No prompts, code, conversation history, or API keys are ever sent.** |
-| `ABOUT="your bio here"` | Short bio, links, or contact info displayed on your profile. URLs are auto-linked. |
+| `ABOUT="..."` | Bio, config details, and links shown on your profile. Share your setup — blog posts, tweets, or videos where you've discussed your workflow. URLs are auto-linked. |
 | `REPORT_DAYS=1` | Only send the last day each cycle instead of 28. Recommended after your first sync. |
 
 `CLIENT_ID` is auto-generated on first run and written to `.env` — you don't need to set it. If you already have one, it's kept as-is.
@@ -148,10 +148,10 @@ Each user gets a shareable profile at `https://www.deepspring.ai/user/YOUR_NAME`
 - Number of reporting machines
 - Your bio from the `ABOUT` field
 
-The `ABOUT` field in `.env` is displayed on your profile. Use it for a short bio, links, or contact info:
+The `ABOUT` field in `.env` is displayed on your profile. Share your setup, workflow, and any links where you've published or discussed your config:
 
 ```
-ABOUT="Building with AI. Twitter: @handle — https://yoursite.com"
+ABOUT="ML engineer. My Claude Code setup: https://blog.example.com/my-ai-workflow — @handle"
 ```
 
 URLs are auto-linked on the profile page.
