@@ -16,6 +16,7 @@ const TEAM = process.env.TEAM || "default";
 const API_KEY = process.env.API_KEY;
 const TOOLS = process.env.TOOLS || "";
 const COMMUNITIES = process.env.COMMUNITIES || "";
+const PROJECTS = process.env.PROJECTS || "";
 const ABOUT = process.env.ABOUT || "";
 
 // Stable machine identifier — auto-generated on first run
@@ -166,6 +167,7 @@ async function main() {
     team: TEAM,
     tools: TOOLS,
     communities: COMMUNITIES,
+    projects: PROJECTS,
     about: ABOUT,
     client_id: CLIENT_ID,
     report_days: REPORT_DAYS,
