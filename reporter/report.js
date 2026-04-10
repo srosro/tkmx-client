@@ -10,6 +10,7 @@ const { mergeDailyUsage } = require("./merge");
 
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
+const { version: CLIENT_VERSION } = require("../package.json");
 const USERNAME = process.env.USERNAME;
 const SERVER_URL = process.env.SERVER_URL || "https://tokenmaxxing.odio.dev";
 const TEAM = process.env.TEAM || "default";
@@ -103,9 +104,11 @@ function postUsage(payload) {
           console.log(`[${new Date().toISOString()}] Server responded ${res.statusCode}: ${body}`);
           if (res.statusCode !== 200) {
             reject(new Error(`Server returned ${res.statusCode}: ${body}`));
-          } else {
-            resolve();
+            return;
           }
+          let parsed = {};
+          try { parsed = JSON.parse(body); } catch {}
+          resolve(parsed);
         });
       }
     );
@@ -181,13 +184,14 @@ async function main() {
     hn_username: HN_USERNAME,
     demo_video_url: DEMO_VIDEO_URL,
     client_id: CLIENT_ID,
+    client_version: CLIENT_VERSION,
     report_days: REPORT_DAYS,
     data: mergedDaily,
   };
   const machineConfig = collectMachineConfig();
   if (machineConfig) body.machine_config = machineConfig;
 
-  await postUsage(JSON.stringify(body));
+  const response = await postUsage(JSON.stringify(body));
 
   const profileUrl = `${SERVER_URL}/user/${USERNAME}`;
   console.log(`  Profile: ${profileUrl}`);
@@ -195,6 +199,11 @@ async function main() {
     console.log(`  Set HN_USERNAME in .env to unlock leaderboard visibility`);
   } else {
     console.log(`  Verify your HN account at your profile page to appear on the leaderboard`);
+  }
+
+  if (response && response.client_update) {
+    const bar = "=".repeat(72);
+    console.log(`\n${bar}\n⚠️  CLIENT UPDATE AVAILABLE\n${bar}\n${response.client_update}\n${bar}`);
   }
 }
 
