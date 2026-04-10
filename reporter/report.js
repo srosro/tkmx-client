@@ -7,6 +7,7 @@ const http = require("node:http");
 const https = require("node:https");
 const { collectCodexUsage } = require("./codex");
 const { mergeDailyUsage } = require("./merge");
+const { collectClaudeSkills } = require("./skills");
 
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
@@ -40,30 +41,6 @@ const CCUSAGE = CCUSAGE_CANDIDATES.find((p) => fs.existsSync(p)) || "ccusage";
 if (!USERNAME || !API_KEY) {
   console.error("USERNAME and API_KEY must be set in .env");
   process.exit(1);
-}
-
-function collectClaudeSkills() {
-  // Authoritative plugin list lives in installed_plugins.json — walking the
-  // cache directly would pick up temp_git_* clones and their repo contents.
-  const manifest = path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json");
-  if (!fs.existsSync(manifest)) return [];
-
-  let parsed;
-  try {
-    parsed = JSON.parse(fs.readFileSync(manifest, "utf-8"));
-  } catch {
-    return [];
-  }
-
-  // Report one entry per installed plugin (e.g. "superpowers"), not one per
-  // skill inside it — the plugin is the unit users recognize and share.
-  const skills = new Set();
-  const plugins = parsed.plugins || {};
-  for (const pluginKey of Object.keys(plugins)) {
-    // pluginKey looks like "superpowers@claude-plugins-official"
-    skills.add(pluginKey.split("@")[0]);
-  }
-  return Array.from(skills).sort();
 }
 
 function collectMachineConfig() {
