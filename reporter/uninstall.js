@@ -28,6 +28,9 @@ function uninstallLaunchd() {
   }
 }
 
+// NOTE: this systemd path is untested — author only verified the launchd
+// branch on darwin. Mirrors install.js step-for-step, but please sanity-check
+// on linux before relying on it.
 function uninstallSystemd() {
   const userDir = path.join(os.homedir(), ".config", "systemd", "user");
   const servicePath = path.join(userDir, "token-tracking-reporter.service");
