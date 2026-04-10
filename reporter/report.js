@@ -128,56 +128,28 @@ async function main() {
 
   console.log(`[${new Date().toISOString()}] Collecting ${REPORT_DAYS}d usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
 
-  // Collect Claude usage
-  let claudeDaily = [];
-  let claudeErr = null;
-  try {
-    const raw = execFileSync(CCUSAGE, ["--json", "--offline", "--since", sinceStr], {
-      encoding: "utf-8",
-      timeout: 30000,
-    });
-    const parsed = JSON.parse(raw);
-    claudeDaily = parsed.daily || [];
-    // Tag each breakdown with source
-    for (const day of claudeDaily) {
-      for (const m of day.modelBreakdowns) {
-        m.source = "claude";
-      }
+  const raw = execFileSync(CCUSAGE, ["--json", "--offline", "--since", sinceStr], {
+    encoding: "utf-8",
+    timeout: 30000,
+  });
+  const parsed = JSON.parse(raw);
+  const claudeDaily = parsed.daily || [];
+  for (const day of claudeDaily) {
+    for (const m of day.modelBreakdowns) {
+      m.source = "claude";
     }
-    console.log(`  Claude: ${claudeDaily.length} days`);
-  } catch (err) {
-    claudeErr = err;
-    console.error("  ccusage failed (continuing with codex only):", err.message);
   }
+  console.log(`  Claude: ${claudeDaily.length} days`);
 
-  // Collect Codex usage
-  let codexDaily = [];
-  let codexErr = null;
-  try {
-    codexDaily = collectCodexUsage(sinceStr);
-    console.log(`  Codex: ${codexDaily.length} days`);
-  } catch (err) {
-    codexErr = err;
-    console.error("  Codex collection failed (continuing with claude only):", err.message);
-  }
+  const codexDaily = collectCodexUsage(sinceStr);
+  console.log(`  Codex: ${codexDaily.length} days`);
 
-  // Collect OpenAI platform usage (optional — requires OPENAI_ADMIN_KEY).
-  // Covers API-key-authenticated usage from platform.openai.com/usage, which
-  // is disjoint from Codex CLI usage when Codex is using ChatGPT subscription
-  // auth. If your Codex is API-key-authed, leave OPENAI_ADMIN_KEY unset to
-  // avoid double-counting.
-  let openaiDaily = [];
-  try {
-    openaiDaily = await collectOpenAIUsage(sinceStr);
-    if (openaiDaily.length > 0) {
-      console.log(`  OpenAI platform: ${openaiDaily.length} days`);
-    }
-  } catch (err) {
-    console.error("  OpenAI platform collection failed (continuing):", err.message);
-  }
-
-  if (claudeErr && codexErr) {
-    throw new Error("Both Claude and Codex collection failed");
+  // Optional — requires OPENAI_ADMIN_KEY. Covers API-key-authenticated usage
+  // from platform.openai.com/usage. If your Codex is API-key-authed, leave
+  // OPENAI_ADMIN_KEY unset to avoid double-counting.
+  const openaiDaily = await collectOpenAIUsage(sinceStr);
+  if (openaiDaily.length > 0) {
+    console.log(`  OpenAI platform: ${openaiDaily.length} days`);
   }
 
   const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily, openaiDaily);

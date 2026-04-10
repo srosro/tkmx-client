@@ -59,7 +59,7 @@ async function fetchAllBuckets(endpoint, apiKey, startTime) {
     if (page) url.searchParams.set("page", page);
 
     const resp = await httpsGetJSON(url.toString(), apiKey);
-    buckets.push(...(resp.data || []));
+    buckets.push(...resp.data);
     if (!resp.has_more || !resp.next_page) break;
     page = resp.next_page;
   }
@@ -80,18 +80,18 @@ function bucketsToDaily(buckets, source = "openai-api") {
       "-" +
       String(date.getDate()).padStart(2, "0");
 
-    for (const result of bucket.results || []) {
-      const inputTokensTotal = result.input_tokens || 0;
-      const outputTokens = result.output_tokens || 0;
-      const cachedInput = result.input_cached_tokens || 0;
+    for (const result of bucket.results) {
+      const inputTokensTotal = result.input_tokens;
+      const outputTokens = result.output_tokens;
+      const cachedInput = result.input_cached_tokens;
       if (inputTokensTotal === 0 && outputTokens === 0) continue;
 
       byDate[dateStr] = byDate[dateStr] || { date: dateStr, modelBreakdowns: [] };
       byDate[dateStr].modelBreakdowns.push({
-        modelName: result.model || "unknown",
+        modelName: result.model,
         // input_tokens in the OpenAI response already includes cached; split them
         // out so cache hits show up as cacheReadTokens (matches ccusage semantics).
-        inputTokens: Math.max(0, inputTokensTotal - cachedInput),
+        inputTokens: inputTokensTotal - cachedInput,
         outputTokens,
         cacheCreationTokens: 0,
         cacheReadTokens: cachedInput,

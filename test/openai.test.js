@@ -46,8 +46,8 @@ describe("bucketsToDaily", () => {
       {
         start_time: APR_5_LOCAL,
         results: [
-          { input_tokens: 100, output_tokens: 50, model: "gpt-4o" },
-          { input_tokens: 200, output_tokens: 100, model: "gpt-4o-mini" },
+          { input_tokens: 100, input_cached_tokens: 0, output_tokens: 50, model: "gpt-4o" },
+          { input_tokens: 200, input_cached_tokens: 0, output_tokens: 100, model: "gpt-4o-mini" },
         ],
       },
     ];
@@ -61,8 +61,8 @@ describe("bucketsToDaily", () => {
 
   it("groups multiple buckets by date and sorts ascending", () => {
     const buckets = [
-      { start_time: APR_6_LOCAL, results: [{ input_tokens: 10, output_tokens: 5, model: "m" }] },
-      { start_time: APR_5_LOCAL, results: [{ input_tokens: 20, output_tokens: 10, model: "m" }] },
+      { start_time: APR_6_LOCAL, results: [{ input_tokens: 10, input_cached_tokens: 0, output_tokens: 5, model: "m" }] },
+      { start_time: APR_5_LOCAL, results: [{ input_tokens: 20, input_cached_tokens: 0, output_tokens: 10, model: "m" }] },
     ];
 
     const result = bucketsToDaily(buckets);
@@ -74,8 +74,8 @@ describe("bucketsToDaily", () => {
       {
         start_time: APR_5_LOCAL,
         results: [
-          { input_tokens: 0, output_tokens: 0, model: "gpt-4o" },
-          { input_tokens: 100, output_tokens: 0, model: "gpt-4o" },
+          { input_tokens: 0, input_cached_tokens: 0, output_tokens: 0, model: "gpt-4o" },
+          { input_tokens: 100, input_cached_tokens: 0, output_tokens: 0, model: "gpt-4o" },
         ],
       },
     ];
@@ -86,42 +86,13 @@ describe("bucketsToDaily", () => {
     assert.equal(result[0].modelBreakdowns[0].inputTokens, 100);
   });
 
-  it("falls back to 'unknown' when the model field is missing", () => {
-    const buckets = [
-      { start_time: APR_5_LOCAL, results: [{ input_tokens: 10, output_tokens: 5 }] },
-    ];
-
-    const result = bucketsToDaily(buckets);
-    assert.equal(result[0].modelBreakdowns[0].modelName, "unknown");
-  });
-
   it("handles an empty bucket list", () => {
     assert.deepEqual(bucketsToDaily([]), []);
   });
 
-  it("tolerates buckets with no results array", () => {
-    const buckets = [{ start_time: APR_5_LOCAL }];
-    assert.deepEqual(bucketsToDaily(buckets), []);
-  });
-
-  it("clamps negative input when cached exceeds total (defensive)", () => {
-    // Shouldn't happen per spec, but if the API ever returns weird numbers
-    // we want inputTokens floored at zero rather than going negative.
-    const buckets = [
-      {
-        start_time: APR_5_LOCAL,
-        results: [{ input_tokens: 100, input_cached_tokens: 150, output_tokens: 10, model: "m" }],
-      },
-    ];
-
-    const result = bucketsToDaily(buckets);
-    assert.equal(result[0].modelBreakdowns[0].inputTokens, 0);
-    assert.equal(result[0].modelBreakdowns[0].cacheReadTokens, 150);
-  });
-
   it("honors a custom source tag", () => {
     const buckets = [
-      { start_time: APR_5_LOCAL, results: [{ input_tokens: 10, output_tokens: 5, model: "m" }] },
+      { start_time: APR_5_LOCAL, results: [{ input_tokens: 10, input_cached_tokens: 0, output_tokens: 5, model: "m" }] },
     ];
     const result = bucketsToDaily(buckets, "openai-test");
     assert.equal(result[0].modelBreakdowns[0].source, "openai-test");
