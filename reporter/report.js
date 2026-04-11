@@ -122,8 +122,8 @@ async function main() {
   const REPORT_DAYS = parseInt(process.env.REPORT_DAYS) || 28;
   // ccusage scans every JSONL transcript under ~/.claude/projects. Heavy users
   // with many projects or large session logs can exceed a tight timeout;
-  // override with CCUSAGE_TIMEOUT_MS if 2 minutes isn't enough.
-  const CCUSAGE_TIMEOUT_MS = parseInt(process.env.CCUSAGE_TIMEOUT_MS) || 120000;
+  // override with CCUSAGE_TIMEOUT_MS if 3 minutes isn't enough.
+  const CCUSAGE_TIMEOUT_MS = parseInt(process.env.CCUSAGE_TIMEOUT_MS) || 180000;
 
   const since = new Date();
   since.setDate(since.getDate() - REPORT_DAYS);
