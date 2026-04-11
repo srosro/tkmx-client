@@ -6,6 +6,7 @@ const path = require("node:path");
 const http = require("node:http");
 const https = require("node:https");
 const { collectCodexUsage } = require("./codex");
+const { collectOpenAIUsage } = require("./openai");
 const { mergeDailyUsage } = require("./merge");
 const { collectClaudeSkills } = require("./skills");
 
@@ -122,44 +123,31 @@ async function main() {
 
   console.log(`[${new Date().toISOString()}] Collecting ${REPORT_DAYS}d usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
 
-  // Collect Claude usage
-  let claudeDaily = [];
-  let claudeErr = null;
-  try {
-    const raw = execFileSync(CCUSAGE, ["--json", "--offline", "--since", sinceStr], {
-      encoding: "utf-8",
-      timeout: 30000,
-    });
-    const parsed = JSON.parse(raw);
-    claudeDaily = parsed.daily || [];
-    // Tag each breakdown with source
-    for (const day of claudeDaily) {
-      for (const m of day.modelBreakdowns) {
-        m.source = "claude";
-      }
+  const raw = execFileSync(CCUSAGE, ["--json", "--offline", "--since", sinceStr], {
+    encoding: "utf-8",
+    timeout: 30000,
+  });
+  const parsed = JSON.parse(raw);
+  const claudeDaily = parsed.daily || [];
+  for (const day of claudeDaily) {
+    for (const m of day.modelBreakdowns) {
+      m.source = "claude";
     }
-    console.log(`  Claude: ${claudeDaily.length} days`);
-  } catch (err) {
-    claudeErr = err;
-    console.error("  ccusage failed (continuing with codex only):", err.message);
+  }
+  console.log(`  Claude: ${claudeDaily.length} days`);
+
+  const codexDaily = collectCodexUsage(sinceStr);
+  console.log(`  Codex: ${codexDaily.length} days`);
+
+  // Optional — requires OPENAI_ADMIN_KEY. Covers API-key-authenticated usage
+  // from platform.openai.com/usage. If your Codex is API-key-authed, leave
+  // OPENAI_ADMIN_KEY unset to avoid double-counting.
+  const openaiDaily = await collectOpenAIUsage(sinceStr);
+  if (openaiDaily.length > 0) {
+    console.log(`  OpenAI platform: ${openaiDaily.length} days`);
   }
 
-  // Collect Codex usage
-  let codexDaily = [];
-  let codexErr = null;
-  try {
-    codexDaily = collectCodexUsage(sinceStr);
-    console.log(`  Codex: ${codexDaily.length} days`);
-  } catch (err) {
-    codexErr = err;
-    console.error("  Codex collection failed (continuing with claude only):", err.message);
-  }
-
-  if (claudeErr && codexErr) {
-    throw new Error("Both Claude and Codex collection failed");
-  }
-
-  const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily);
+  const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily, openaiDaily);
 
   if (mergedDaily.length === 0) {
     console.log("No usage data to report.");
