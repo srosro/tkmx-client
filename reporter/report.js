@@ -6,6 +6,7 @@ const path = require("node:path");
 const http = require("node:http");
 const https = require("node:https");
 const { collectCodexUsage } = require("./codex");
+const { collectOpenAIUsage } = require("./openai");
 const { mergeDailyUsage } = require("./merge");
 const { parseExtraConfigs, aggregateClaudeResults, collectCcusage } = require("./claude-collect");
 const { collectClaudeSkills } = require("./skills");
@@ -154,23 +155,20 @@ async function main() {
   }
 
   const { daily: claudeDaily, err: claudeErr } = aggregateClaudeResults(claudeResults);
+  if (claudeErr) throw claudeErr;
 
-  // Collect Codex usage
-  let codexDaily = [];
-  let codexErr = null;
-  try {
-    codexDaily = collectCodexUsage(sinceStr);
-    console.log(`  Codex: ${codexDaily.length} days`);
-  } catch (err) {
-    codexErr = err;
-    console.error("  Codex collection failed (continuing with claude only):", err.message);
+  const codexDaily = collectCodexUsage(sinceStr);
+  console.log(`  Codex: ${codexDaily.length} days`);
+
+  // Optional — requires OPENAI_ADMIN_KEY. Covers API-key-authenticated usage
+  // from platform.openai.com/usage. If your Codex is API-key-authed, leave
+  // OPENAI_ADMIN_KEY unset to avoid double-counting.
+  const openaiDaily = await collectOpenAIUsage(sinceStr);
+  if (openaiDaily.length > 0) {
+    console.log(`  OpenAI platform: ${openaiDaily.length} days`);
   }
 
-  if (claudeErr && codexErr) {
-    throw new Error("Both Claude and Codex collection failed");
-  }
-
-  const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily);
+  const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily, openaiDaily);
 
   if (mergedDaily.length === 0) {
     console.log("No usage data to report.");
