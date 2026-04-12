@@ -63,7 +63,8 @@ cp .env.example .env
 | `DEMO_VIDEO_URL` | No | YouTube URL (4 min or shorter) showing your before/after AI coding workflow. Embedded on your profile page. |
 | `HN_USERNAME` | No | Your Hacker News username (e.g. `Sam_Odio`). Required to appear on the leaderboard — see [HN Verification](#appearing-on-the-leaderboard-hn-verification) |
 | `REPORT_DAYS` | No | Days of history to report (default: `28`). See [Backfill & Optimization](#backfill--optimization) |
-| `REPORT_MACHINE_CONFIG` | No | Set to `true` to share machine info (OS, CPU, memory, installed skills) on your profile. No prompts, code, or keys are ever sent. |
+| `REPORT_MACHINE_CONFIG` | No | Set to `true` to share machine info (OS, CPU, memory, installed skills, MCP servers, hooks, CLAUDE.md stats, shell/editor) on your profile. No prompts, code, or keys are ever sent. |
+| `REPORT_DEV_STATS` | No | Set to `true` to share how you code — tool-call frequencies, session stats, cache efficiency, git outcome metrics (commits/LOC/PRs), and Cursor AI attribution. No file paths, prompts, or code are ever sent. See [Dev Stats](#dev-stats). |
 | `CCUSAGE_TIMEOUT_MS` | No | Milliseconds to wait for each `ccusage` run before giving up (default: `180000` = 3 min). Bump if you have a large `~/.claude/projects` tree and see `ccusage ETIMEDOUT`. |
 
 ### 5. First run
@@ -122,6 +123,7 @@ If you're updating an existing install, refer to the config table above and add 
 | `REPORT_DAYS=1` | Only send the last day each cycle instead of 28. Recommended after your first sync. |
 | `DEMO_VIDEO_URL=https://www.youtube.com/watch?v=...` | YouTube demo video (4 min or shorter) embedded on your profile. Show before/after workflows — how you worked before AI tools vs. after. |
 | `HN_USERNAME=Sam_Odio` | Your Hacker News username. Required for leaderboard visibility — see [HN Verification](#appearing-on-the-leaderboard-hn-verification). |
+| `REPORT_DEV_STATS=true` | Shares how you code — tool frequencies, session stats, cache efficiency, git outcomes, Cursor attribution. See [Dev Stats](#dev-stats). |
 
 `CLIENT_ID` is auto-generated on first run and written to `.env` — you don't need to set it. If you already have one, it's kept as-is.
 
@@ -236,6 +238,24 @@ COMMUNITIES=bloomberg-ai-engineering,agentcribs-community
 | [paperclip](https://github.com/paperclipai/paperclip) | AI coding agent framework |
 | [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) | Codex CLI enhancements |
 | [cmux](https://cmux.com/) | AI coding multiplexer |
+
+## Dev Stats
+
+Set `REPORT_DEV_STATS=true` to share how you actually code. This helps the community learn from top developers' workflows — what tools they use, how they use them, and what they ship.
+
+**What's collected:**
+
+| Category | Data | Source |
+|----------|------|--------|
+| **Workflow shape** | Tool-call frequencies (Edit, Read, Bash, Grep, Agent, etc.), avg tools per turn, subagent dispatch count, plan-mode entries | Claude Code JSONL transcripts |
+| **Session stats** | Sessions/period, avg session length, hour-of-day histogram | Claude Code JSONL timestamps |
+| **Cache efficiency** | Cache reuse ratio (cache reads / total prompt tokens) | Claude Code JSONL usage blocks |
+| **Git outcomes** | Commits, LOC ±, files changed, PRs opened/merged (aggregate across all repos) | `git log` and `gh` in repos Claude touched |
+| **Cursor attribution** | Tab-completion vs composer vs human lines, AI-authored %, conversations by model/mode | `~/.cursor/ai-tracking/ai-code-tracking.db` |
+
+**What's never sent:** file paths, prompt content, tool arguments, repo names, code, commit messages, API keys.
+
+The `REPORT_MACHINE_CONFIG` flag also now includes your configuration stack: MCP server names (no credentials), hook event types, CLAUDE.md size, shell/terminal/editor, and git worktree count.
 
 ## Cost Estimation
 

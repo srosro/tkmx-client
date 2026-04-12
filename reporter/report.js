@@ -5,11 +5,15 @@ const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const https = require("node:https");
-const { collectCodexUsage } = require("./codex");
+const { collectCodexUsage, collectCodexStats } = require("./codex");
 const { collectOpenAIUsage } = require("./openai");
 const { mergeDailyUsage } = require("./merge");
 const { parseExtraConfigs, aggregateClaudeResults, collectCcusage } = require("./claude-collect");
 const { collectClaudeSkills } = require("./skills");
+const { collectConfigStack } = require("./config-stack");
+const { collectWorkflowStats } = require("./workflow");
+const { collectOutcomeStats } = require("./outcomes");
+const { collectCursorStats } = require("./cursor");
 
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
@@ -96,6 +100,7 @@ function collectMachineConfig() {
   try { cfg.codex_version = execFileSync("codex", ["--version"], { encoding: "utf-8", timeout: 5000 }).trim(); } catch {}
   const skills = collectClaudeSkills();
   if (skills.length > 0) cfg.claude_skills = skills;
+  Object.assign(cfg, collectConfigStack());
   // Only send if config changed since last report
   const cfgJson = JSON.stringify(cfg);
   const cfgHash = crypto.createHash("sha256").update(cfgJson).digest("hex").slice(0, 16);
@@ -229,6 +234,35 @@ async function main() {
   };
   const machineConfig = collectMachineConfig();
   if (machineConfig) body.machine_config = machineConfig;
+
+  // Dev stats — behavioral data gated behind REPORT_DEV_STATS=true
+  if (process.env.REPORT_DEV_STATS === "true") {
+    console.log("  Collecting dev stats...");
+
+    const workflowResult = await collectWorkflowStats(sinceStr);
+    if (workflowResult) {
+      body.workflow_stats = workflowResult.workflowStats;
+      console.log(`  Workflow: ${workflowResult.workflowStats.sessions} sessions, ${workflowResult.workflowStats.assistant_turns} turns`);
+
+      const outcomeStats = collectOutcomeStats(workflowResult.cwds, sinceStr);
+      if (outcomeStats) {
+        body.outcome_stats = outcomeStats;
+        console.log(`  Outcomes: ${outcomeStats.commits} commits across ${outcomeStats.repos_active} repos`);
+      }
+    }
+
+    const cursorStats = collectCursorStats(sinceStr);
+    if (cursorStats) {
+      body.cursor_stats = cursorStats;
+      console.log(`  Cursor: ${cursorStats.scored_commits || 0} scored commits`);
+    }
+
+    const codexStats = collectCodexStats(sinceStr);
+    if (codexStats) {
+      body.codex_stats = codexStats;
+      console.log(`  Codex stats: ${codexStats.sessions} sessions, ${codexStats.avg_tokens_per_session} avg tokens/session`);
+    }
+  }
 
   const response = await postUsage(JSON.stringify(body));
 
