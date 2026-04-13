@@ -220,11 +220,17 @@ async function main() {
       continue;
     }
     const dataDir = agentsviewDataDirFor(absEntry);
-    fs.mkdirSync(dataDir, { recursive: true });
-    const remoteDaily = collectAgentsviewClaudeOnly(agentsviewBin, sinceStr, {
-      AGENT_VIEWER_DATA_DIR: dataDir,
-      CLAUDE_PROJECTS_DIR: projectsDir,
-    });
+    let remoteDaily;
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+      remoteDaily = collectAgentsviewClaudeOnly(agentsviewBin, sinceStr, {
+        AGENT_VIEWER_DATA_DIR: dataDir,
+        CLAUDE_PROJECTS_DIR: projectsDir,
+      });
+    } catch (err) {
+      console.error(`  Claude (${label}) failed: ${err.message}`);
+      continue;
+    }
     console.log(`  Claude (${label}): ${remoteDaily.length} days`);
     claudeDaily = claudeDaily.concat(remoteDaily);
   }
