@@ -60,7 +60,7 @@ cp .env.example .env
 | `PROJECTS` | No | What are you spending tokens on? The projects you're actively building with AI. |
 | `COMMUNITIES` | No | What developer communities are you part of? |
 | `ABOUT` | No | The main content of your profile — describe your setup, link to tools you use, share blog posts/videos about your workflow. URLs are auto-linked. See [Profile Page](#profile-page) |
-| `DEMO_VIDEO_URL` | No | YouTube URL (4 min or shorter) showing your before/after AI coding workflow. Embedded on your profile page. |
+| `DEMO_VIDEO_URL` | No | YouTube URL (**3 min or shorter**) showing your before/after AI coding workflow. Embedded on your profile page under "3-MIN DEMO VIDEO". |
 | `HN_USERNAME` | No | Your Hacker News username (e.g. `Sam_Odio`). Required to appear on the leaderboard — see [HN Verification](#appearing-on-the-leaderboard-hn-verification) |
 | `REPORT_DAYS` | No | Days of history to report (default: `28`). See [Backfill & Optimization](#backfill--optimization) |
 | `REPORT_MACHINE_CONFIG` | No | Set to `true` to share machine info (OS, CPU, memory, installed skills, MCP servers, hooks, CLAUDE.md stats, shell/editor) on your profile. No prompts, code, or keys are ever sent. |
@@ -81,6 +81,8 @@ npm run report
 ```
 
 A `CLIENT_ID` is auto-generated on first run and saved to `.env`. This identifies your machine so multiple machines can report for the same username without overwriting each other.
+
+> **⚠ Don't touch `CLIENT_ID` once it's set.** Usage rows are keyed on `(username, date, model, client_id)` server-side. If you delete `.env`, re-clone into a new directory, or paste a fresh `.env` that omits the line, a new id is generated and the server treats your machine as brand new — the old id's rows stay behind and every overlapping date gets double-counted on your profile. When updating, always `git pull` in place rather than re-cloning. If you must re-clone, copy `CLIENT_ID` from the old `.env` first.
 
 ### 6. Install the background service
 
@@ -108,7 +110,7 @@ git pull
 npm install
 ```
 
-Your existing config (credentials, `CLIENT_ID`) is preserved — `git pull` never touches `.env`.
+Your existing config (credentials, `CLIENT_ID`) is preserved — `git pull` never touches `.env`. **Do not re-clone or delete `.env` as an "update" — see the CLIENT_ID warning in [First run](#5-first-run).**
 
 ### What's new
 
@@ -121,7 +123,7 @@ If you're updating an existing install, refer to the config table above and add 
 | `COMMUNITIES=bloomberg-ai-engineering,agentcribs-community` | Developer communities you're part of. Shown as badges on your profile and leaderboard. |
 | `ABOUT="..."` | Bio, config details, and links shown on your profile. Share your setup — blog posts, tweets, or videos where you've discussed your workflow. URLs are auto-linked. |
 | `REPORT_DAYS=1` | Only send the last day each cycle instead of 28. Recommended after your first sync. |
-| `DEMO_VIDEO_URL=https://www.youtube.com/watch?v=...` | YouTube demo video (4 min or shorter) embedded on your profile. Show before/after workflows — how you worked before AI tools vs. after. |
+| `DEMO_VIDEO_URL=https://www.youtube.com/watch?v=...` | YouTube demo video (**3 min or shorter**) embedded on your profile. Show before/after workflows — how you worked before AI tools vs. after. |
 | `HN_USERNAME=Sam_Odio` | Your Hacker News username. Required for leaderboard visibility — see [HN Verification](#appearing-on-the-leaderboard-hn-verification). |
 | `REPORT_DEV_STATS=true` | Shares how you code — tool frequencies, session stats, cache efficiency, git outcomes, Cursor attribution. See [Dev Stats](#dev-stats). |
 
@@ -192,9 +194,9 @@ ABOUT="Building with https://github.com/nickarail/arsenal — 3x founder, shippi
 
 URLs are auto-linked on your profile page. The more detail you share, the more useful your profile is to the community.
 
-### Demo Video
+### 3-Min Demo Video
 
-Set `DEMO_VIDEO_URL` to a YouTube link (4 minutes or shorter) and it will be embedded directly on your profile. The best demo videos show **before/after workflows** — how you approached a task before AI tools vs. how you do it now. This is the single most useful thing you can share with other developers.
+Set `DEMO_VIDEO_URL` to a YouTube link — **keep it to 3 minutes or shorter**. It embeds on your profile under the "3-MIN DEMO VIDEO" heading. The 3-minute cap is a social contract, not a technical check: longer videos get skipped, because most visitors won't commit more than that to a stranger's workflow demo. The best demo videos show **before/after workflows** — how you approached a task before AI tools vs. how you do it now. This is the single most useful thing you can share with other developers.
 
 ```
 DEMO_VIDEO_URL=https://www.youtube.com/watch?v=YiDcgyAn-88
