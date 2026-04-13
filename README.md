@@ -196,11 +196,18 @@ URLs are auto-linked on your profile page. The more detail you share, the more u
 
 ### 3-Min Demo Video
 
-Set `DEMO_VIDEO_URL` to a YouTube link — **keep it to 3 minutes or shorter**. It embeds on your profile under the "3-MIN DEMO VIDEO" heading. The 3-minute cap is a social contract, not a technical check: longer videos get skipped, because most visitors won't commit more than that to a stranger's workflow demo. The best demo videos show **before/after workflows** — how you approached a task before AI tools vs. how you do it now. This is the single most useful thing you can share with other developers.
+Set `DEMO_VIDEO_URL` to a YouTube link — **keep it to 3 minutes or shorter**. It embeds on your profile under the "3-MIN DEMO VIDEO" heading. This is the single most useful thing you can share with other developers.
 
 ```
 DEMO_VIDEO_URL=https://www.youtube.com/watch?v=YiDcgyAn-88
 ```
+
+**The goal is one aha moment.** Pick a single concrete task and show how AI has changed the way you do it. Structure it as old world → new world:
+
+- **Old world (~1 min).** One task you used to do before AI. Spell out the friction: the manual steps, how long it took, the parts that made you dread it. Keep this short — the viewer needs enough context to feel the old pain, but not a full re-enactment.
+- **New world (~2 min).** The same task today. Show the prompt, the agent's output, the shipped result. Don't cut away from the screen — let people see the actual workflow land. The viewer should finish thinking "I want that."
+
+**Why 3 minutes?** It's a social contract, not a technical check: longer videos get skipped, because nobody owes a stranger more than three minutes to "get" their workflow. The discipline of cutting to 3 minutes is also what forces the demo to be actually good — if you can't show the transformation in that time, the transformation isn't as clear as you thought, and watching a longer cut won't fix it.
 
 ## Appearing on the Leaderboard (HN Verification)
 
