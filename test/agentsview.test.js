@@ -1,5 +1,8 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
+const path = require("node:path");
+const os = require("node:os");
+const fs = require("node:fs");
 
 const { parseAgentsviewOutput, toIsoDate } = require("../reporter/agentsview");
 
@@ -90,5 +93,36 @@ describe("parseAgentsviewOutput", () => {
     const daily = parseAgentsviewOutput(parsed, "claude");
     assert.equal(daily.length, 1);
     assert.equal(daily[0].date, "2026-04-10");
+  });
+});
+
+describe("resolveAgentsview", () => {
+  it("returns null when no candidate path exists", () => {
+    const origHome = process.env.HOME;
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tkmx-resolve-"));
+    process.env.HOME = tmp;
+    try {
+      const { resolveAgentsview } = require("../reporter/agentsview");
+      assert.equal(resolveAgentsview(), null);
+    } finally {
+      process.env.HOME = origHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("returns the first existing candidate when one is present", () => {
+    const origHome = process.env.HOME;
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tkmx-resolve-"));
+    fs.mkdirSync(path.join(tmp, ".local", "bin"), { recursive: true });
+    const fake = path.join(tmp, ".local", "bin", "agentsview");
+    fs.writeFileSync(fake, "#!/bin/sh\n");
+    process.env.HOME = tmp;
+    try {
+      const { resolveAgentsview } = require("../reporter/agentsview");
+      assert.equal(resolveAgentsview(), fake);
+    } finally {
+      process.env.HOME = origHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

@@ -2,14 +2,17 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 
 // Resolve agentsview binary — launchd/systemd don't inherit user shell PATH.
-const AGENTSVIEW_CANDIDATES = [
-  `${process.env.HOME}/.local/bin/agentsview`,
-  "/opt/homebrew/bin/agentsview",
-  "/usr/local/bin/agentsview",
-];
+// Lazy so tests can swap HOME per-case.
+function agentsviewCandidates() {
+  return [
+    `${process.env.HOME}/.local/bin/agentsview`,
+    "/opt/homebrew/bin/agentsview",
+    "/usr/local/bin/agentsview",
+  ];
+}
 
 function resolveAgentsview() {
-  return AGENTSVIEW_CANDIDATES.find((p) => fs.existsSync(p)) || "agentsview";
+  return agentsviewCandidates().find((p) => fs.existsSync(p)) || null;
 }
 
 function toIsoDate(sinceStr) {
