@@ -153,7 +153,9 @@ If you're updating an existing install, refer to the config table above and add 
 
 ## Upgrading from v1.x
 
-v2.0.0 replaces `ccusage` + the direct codex sqlite reader with [agentsview](https://www.agentsview.io/token-usage/) for all local Claude and Codex token collection. `EXTRA_CLAUDE_CONFIGS` — the feature for aggregating usage from synced remote `~/.claude` directories — also goes through agentsview (it creates a per-config-dir sqlite under `~/.agentsview-tkmx/<hash>/` for isolated incremental sync).
+> **⚠️ BREAKING in v1.3.0:** agentsview is now a **hard dependency**. If you don't have it installed, `npm run report` will exit with an install-or-pin message on first run. This is technically a breaking change under SemVer — we kept it as a minor bump because the user pool is small, the fix is a one-line install, and the pin path to `v1.2.0` is explicit and supported.
+
+v1.3.0 replaces `ccusage` + the direct codex sqlite reader with [agentsview](https://www.agentsview.io/token-usage/) for all local Claude and Codex token collection. `EXTRA_CLAUDE_CONFIGS` — the feature for aggregating usage from synced remote `~/.claude` directories — also goes through agentsview (it creates a per-config-dir sqlite under `~/.agentsview-tkmx/<hash>/` for isolated incremental sync).
 
 **If you can install agentsview:** `git pull`, install agentsview, run `npm run report`. That's it — existing `.env` settings are unchanged. The `USE_AGENTSVIEW` flag and `CCUSAGE_TIMEOUT_MS` are gone (delete them from your `.env` if present — they're ignored).
 

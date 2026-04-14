@@ -182,14 +182,14 @@ async function main() {
 
   console.log(`[${new Date().toISOString()}] Collecting ${REPORT_DAYS}d usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
 
-  // Require agentsview — v2.0.0 dropped ccusage as a supported collector.
+  // Require agentsview — v1.3.0 dropped ccusage as a supported collector.
   // Users who want the old flow can pin to the v1.2.0 tag.
   const agentsviewBin = resolveAgentsview();
   if (!agentsviewBin) {
     console.error("");
     console.error("agentsview not found.");
     console.error("");
-    console.error("tkmx-client v2.0.0 requires agentsview for local token usage collection.");
+    console.error("tkmx-client v1.3.0 requires agentsview for local token usage collection.");
     console.error("");
     console.error("Install (macOS / Linux):");
     console.error("  curl -fsSL https://agentsview.io/install.sh | bash");
