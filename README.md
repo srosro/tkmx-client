@@ -5,7 +5,10 @@ Reports your Claude Code and Codex token usage to the [Tokenmaxxing Leaderboard]
 ## Quick Start
 
 ```bash
-npm install -g ccusage            # Claude Code usage reader
+# Install agentsview (required). See https://agentsview.io/quickstart/ for
+# platform-specific install; the canonical one-liner is:
+curl -fsSL https://agentsview.io/install.sh | bash
+
 git clone git@github.com:srosro/tkmx-client.git
 cd tkmx-client && npm install
 cp .env.example .env              # then edit .env (see below)
@@ -13,15 +16,37 @@ npm run report                    # test it
 npm run install-service           # auto-report every 2 hours
 ```
 
+> New to the client or upgrading from v1.x? See [Upgrading from v1.x](#upgrading-from-v1x) for the `v1.2.0` pinning option if you can't install agentsview.
+
 ## Setup
 
 ### 1. Install dependencies
 
-[ccusage](https://github.com/syumarin/ccusage) reads your local Claude Code usage data. Codex CLI usage is auto-detected from `~/.codex/` — no extra setup needed.
+[agentsview](https://www.agentsview.io/token-usage/) is required — it reads your local Claude Code and Codex usage data from an incrementally-synced SQLite index, which is dramatically faster than walking every JSONL transcript.
 
+**macOS / Linux:**
+
+```bash
+curl -fsSL https://agentsview.io/install.sh | bash
 ```
-npm install -g ccusage
+
+**Windows:**
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://agentsview.io/install.ps1 | iex"
 ```
+
+The installer drops the binary in `~/.local/bin/agentsview` by default. If you install somewhere else (nix, asdf, custom prefix), set `AGENTSVIEW_BIN=/path/to/agentsview` in your `.env` and tkmx-client will use that. See https://agentsview.io/quickstart/ for more. Codex CLI usage is auto-detected from `~/.codex/` — no extra setup beyond agentsview.
+
+> **Previously using ccusage?** v1.x of this client used `ccusage`. If you prefer the old flow and don't want to install agentsview, pin to the v1.2.0 tag:
+>
+> ```bash
+> cd tkmx-client
+> git checkout v1.2.0
+> npm install
+> ```
+>
+> See [Upgrading from v1.x](#upgrading-from-v1x) for details.
 
 ### 2. Clone and install
 
@@ -65,7 +90,6 @@ cp .env.example .env
 | `REPORT_DAYS` | No | Days of history to report (default: `28`). See [Backfill & Optimization](#backfill--optimization) |
 | `REPORT_MACHINE_CONFIG` | No | Set to `true` to share machine info (OS, CPU, memory, installed skills, MCP servers, hooks, CLAUDE.md stats, shell/editor) on your profile. No prompts, code, or keys are ever sent. |
 | `REPORT_DEV_STATS` | No | Set to `true` to share how you code — tool-call frequencies, session stats, cache efficiency, git outcome metrics (commits/LOC/PRs), and Cursor AI attribution. No file paths, prompts, or code are ever sent. See [Dev Stats](#dev-stats). |
-| `CCUSAGE_TIMEOUT_MS` | No | Milliseconds to wait for each `ccusage` run before giving up (default: `180000` = 3 min). Bump if you have a large `~/.claude/projects` tree and see `ccusage ETIMEDOUT`. |
 
 ### 5. First run
 
@@ -129,6 +153,33 @@ If you're updating an existing install, refer to the config table above and add 
 
 `CLIENT_ID` is auto-generated on first run and written to `.env` — you don't need to set it. If you already have one, it's kept as-is.
 
+## Upgrading from v1.x
+
+> **⚠️ BREAKING in v1.3.0:** agentsview is now a **hard dependency**. If you don't have it installed, `npm run report` will exit with an install-or-pin message on first run. This is technically a breaking change under SemVer — we kept it as a minor bump because the user pool is small, the fix is a one-line install, and the pin path to `v1.2.0` is explicit and supported.
+
+v1.3.0 replaces `ccusage` + the direct codex sqlite reader with [agentsview](https://www.agentsview.io/token-usage/) for all local Claude and Codex token collection. `EXTRA_CLAUDE_CONFIGS` — the feature for aggregating usage from synced remote `~/.claude` directories — also goes through agentsview (it creates a per-config-dir sqlite under `~/.agentsview-tkmx/<hash>/` for isolated incremental sync).
+
+### Why upgrade?
+
+1. **Correct codex token counts.** v1.x's `~/.codex/state_*.sqlite` reader was silently dropping cache-read tokens. Expect your **codex `total_tokens` to jump ~+90%** on active codex machines (Claude numbers are unaffected). This is agentsview counting tokens that were always being spent but never appearing in your reports — **a correction, not inflation.** Nothing is double-counted.
+2. **Accurate cost.** agentsview computes per-field cost via LiteLLM and the server respects it, so codex dollar figures on your profile go from server-side blended estimates to actual per-model rates.
+3. **~200× faster** on large histories via agentsview's incremental SQLite sync, instead of walking every JSONL transcript on every run.
+4. **Bonus: free session viewer.** You now have `agentsview` installed — run `agentsview` in a terminal and you get a full local web UI for browsing and full-text-searching every Claude + Codex session you've ever had. It's a real product, not a data-access tool. See https://agentsview.io for the full feature set.
+5. **Single install story going forward.** One dependency to install, not "ccusage or codex-sqlite-reader depending on which flag you set."
+
+**If you can install agentsview:** `git pull`, install agentsview, run `npm run report`. That's it — existing `.env` settings are unchanged. The `USE_AGENTSVIEW` flag and `CCUSAGE_TIMEOUT_MS` are gone (delete them from your `.env` if present — they're ignored).
+
+**If you can't or don't want to install agentsview:** pin to the last ccusage-based release. This is a real, working version — it will stay reachable:
+
+```bash
+cd tkmx-client
+git checkout v1.2.0
+npm install
+npm run report
+```
+
+You lose access to future improvements, but the v1.2.0 flow (ccusage + codex sqlite) continues to work against the server.
+
 ## Backfill & Optimization
 
 By default the reporter sends 28 days of history. To backfill older data or optimize steady-state reporting:
@@ -157,7 +208,7 @@ If you already sync `~/.claude` from other machines to a central location (e.g. 
 EXTRA_CLAUDE_CONFIGS=/path/to/synced-laptop,/path/to/synced-desktop
 ```
 
-The reporter runs `ccusage` once per directory (using `CLAUDE_CONFIG_DIR`) and merges the results with the local machine's usage before submitting.
+The reporter runs `agentsview` once per directory (each with its own `AGENT_VIEWER_DATA_DIR` under `~/.agentsview-tkmx/<hash>/` and `CLAUDE_PROJECTS_DIR` pointing at `<dir>/projects`) and merges the results with the local machine's usage before submitting. Each remote mirror gets its own incrementally-synced sqlite, so re-runs are cheap.
 
 ## OpenAI Platform Usage
 
@@ -270,19 +321,18 @@ The `REPORT_MACHINE_CONFIG` flag also now includes your configuration stack: MCP
 
 Cost is calculated server-side using current API pricing:
 
-- **Claude models** — estimated per token type (input, output, cache write, cache read) when ccusage doesn't provide cost. When ccusage reports accurate cost, that's used as-is.
+- **Claude models** — estimated per token type (input, output, cache write, cache read) when agentsview doesn't provide cost. When agentsview reports accurate cost, that's used as-is.
 - **Codex models** — estimated using blended rates since Codex only reports total tokens (no input/output split).
 
 You don't need to worry about pricing — the server handles it.
 
 ## How It Works
 
-The reporter collects token usage from two sources:
+[`agentsview`](https://www.agentsview.io/token-usage/) is the required local usage collector. It maintains its own sqlite database synced from `~/.claude` and `~/.codex`, and the reporter queries it via `agentsview usage daily --json --breakdown --agent <claude|codex>`. On large histories this is dramatically faster than walking every JSONL transcript — the sync is incremental and queries hit an indexed database.
 
-- **Claude Code** via [ccusage](https://github.com/syumarin/ccusage) (`ccusage --json --offline`)
-- **Codex CLI** from `~/.codex/state_*.sqlite` (auto-detected, skipped if not present)
+When `EXTRA_CLAUDE_CONFIGS` is set, the reporter runs one agentsview invocation per remote dir, each with its own `AGENT_VIEWER_DATA_DIR` (under `~/.agentsview-tkmx/<hash>/`) and `CLAUDE_PROJECTS_DIR` (pointing at the remote `.claude/projects`). This keeps each remote mirror in its own isolated sqlite — incremental sync works per-dir and the local machine's `~/.agentsview/sessions.db` stays clean.
 
-Both are merged and POSTed to the Tokenmaxxing server with your API key. Each report replaces previous data for the same machine and date range, so re-syncs are safe and idempotent.
+The reporter merges Claude + Codex daily usage client-side and POSTs it to the Tokenmaxxing server. Each report replaces previous data for the same machine and date range, so re-syncs are safe and idempotent.
 
 ## Logs
 

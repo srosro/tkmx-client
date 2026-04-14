@@ -5,10 +5,14 @@ const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const https = require("node:https");
-const { collectCodexUsage, collectCodexStats } = require("./codex");
+const { collectCodexStats } = require("./codex");
+const {
+  collectAgentsviewUsage,
+  collectAgentsviewClaudeOnly,
+  resolveAgentsview,
+} = require("./agentsview");
 const { collectOpenAIUsage } = require("./openai");
 const { mergeDailyUsage } = require("./merge");
-const { parseExtraConfigs, aggregateClaudeResults, collectCcusage } = require("./claude-collect");
 const { collectClaudeSkills } = require("./skills");
 const { collectConfigStack } = require("./config-stack");
 const { collectWorkflowStats } = require("./workflow");
@@ -36,14 +40,6 @@ const DEMO_VIDEO_URL = process.env.DEMO_VIDEO_URL || "";
 const EXTRA_CLAUDE_CONFIGS = process.env.EXTRA_CLAUDE_CONFIGS || "";
 
 const ENV_PATH = path.join(__dirname, "..", ".env");
-
-// Resolve ccusage binary — launchd/systemd don't inherit the user's shell PATH
-const CCUSAGE_CANDIDATES = [
-  "/opt/homebrew/bin/ccusage",
-  "/usr/local/bin/ccusage",
-  `${process.env.HOME}/.npm-global/bin/ccusage`,
-];
-const CCUSAGE = CCUSAGE_CANDIDATES.find((p) => fs.existsSync(p)) || "ccusage";
 
 if (!USERNAME || !API_KEY) {
   console.error("USERNAME and API_KEY must be set in .env");
@@ -89,6 +85,23 @@ if (!CLIENT_ID) {
   CLIENT_ID = deriveClientId(USERNAME);
   fs.appendFileSync(ENV_PATH, `CLIENT_ID=${CLIENT_ID}\n`);
   console.log(`Generated CLIENT_ID=${CLIENT_ID}`);
+}
+
+function parseExtraConfigs(raw) {
+  return (raw || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+// Deterministic per-config-dir data directory so agentsview can
+// maintain a separate incrementally-synced sqlite for each remote
+// mirror without contaminating the local machine's
+// ~/.agentsview/sessions.db. Keyed by sha256 of the absolute path so
+// multiple tkmx-clients pointing at the same mirror share one db.
+function agentsviewDataDirFor(absConfigDir) {
+  const hash = crypto.createHash("sha256").update(absConfigDir).digest("hex").slice(0, 16);
+  return path.join(os.homedir(), ".agentsview-tkmx", hash);
 }
 
 function collectMachineConfig() {
@@ -159,10 +172,6 @@ function postUsage(payload) {
 
 async function main() {
   const REPORT_DAYS = parseInt(process.env.REPORT_DAYS) || 28;
-  // ccusage scans every JSONL transcript under ~/.claude/projects. Heavy users
-  // with many projects or large session logs can exceed a tight timeout;
-  // override with CCUSAGE_TIMEOUT_MS if 3 minutes isn't enough.
-  const CCUSAGE_TIMEOUT_MS = parseInt(process.env.CCUSAGE_TIMEOUT_MS) || 180000;
 
   const since = new Date();
   since.setDate(since.getDate() - REPORT_DAYS);
@@ -173,35 +182,66 @@ async function main() {
 
   console.log(`[${new Date().toISOString()}] Collecting ${REPORT_DAYS}d usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
 
-  // Collect Claude usage — once from the local ~/.claude, then once per
-  // EXTRA_CLAUDE_CONFIGS entry (CLAUDE_CONFIG_DIR pointed at a synced remote).
-  // We run ccusage separately per config dir rather than pointing ccusage at a
-  // comma-joined CLAUDE_CONFIG_DIR, because a single ccusage process over
-  // multi-machine data can OOM; separating keeps each run bounded.
-  const claudeResults = [collectCcusage(CCUSAGE, sinceStr, "local", {}, CCUSAGE_TIMEOUT_MS)];
+  // Require agentsview — v1.3.0 dropped ccusage as a supported collector.
+  // Users who want the old flow can pin to the v1.2.0 tag.
+  const agentsviewBin = resolveAgentsview();
+  if (!agentsviewBin) {
+    console.error("");
+    console.error("agentsview not found.");
+    console.error("");
+    console.error("tkmx-client v1.3.0 requires agentsview for local token usage collection.");
+    console.error("");
+    console.error("Install (macOS / Linux):");
+    console.error("  curl -fsSL https://agentsview.io/install.sh | bash");
+    console.error("");
+    console.error("Windows:");
+    console.error("  powershell -ExecutionPolicy ByPass -c \"irm https://agentsview.io/install.ps1 | iex\"");
+    console.error("");
+    console.error("Custom install location? Set AGENTSVIEW_BIN=/path/to/agentsview");
+    console.error("More: https://agentsview.io/quickstart/");
+    console.error("");
+    console.error("Prefer the previous ccusage-based flow? Pin to v1.2.0:");
+    console.error("  cd tkmx-client && git checkout v1.2.0 && npm install");
+    console.error("");
+    process.exit(1);
+  }
+  console.log(`  Using agentsview at ${agentsviewBin}`);
 
-  for (const configDir of parseExtraConfigs(EXTRA_CLAUDE_CONFIGS)) {
-    const label = path.basename(configDir) || configDir;
-    if (!fs.existsSync(path.join(configDir, "projects"))) {
-      const msg = `missing projects/ subdir at ${configDir}`;
-      console.error(`  Claude (${label}) skipped: ${msg}`);
-      claudeResults.push({ daily: [], err: new Error(msg) });
+  // Local machine: agentsview's default data dir + default claude/codex dirs.
+  const { claudeDaily: localClaudeDaily, codexDaily } = collectAgentsviewUsage(agentsviewBin, sinceStr);
+  console.log(`  Claude (local): ${localClaudeDaily.length} days`);
+  console.log(`  Codex (local): ${codexDaily.length} days`);
+
+  // EXTRA_CLAUDE_CONFIGS: one agentsview invocation per remote dir, each
+  // with its own AGENT_VIEWER_DATA_DIR so incremental sync stays partitioned.
+  // CLAUDE_PROJECTS_DIR points at the .claude/projects subdir of each entry
+  // (tkmx-client's EXTRA_CLAUDE_CONFIGS semantic is still ".claude" roots —
+  // we append /projects internally to match agentsview's CLAUDE_PROJECTS_DIR
+  // convention).
+  let claudeDaily = [...localClaudeDaily];
+  for (const entry of parseExtraConfigs(EXTRA_CLAUDE_CONFIGS)) {
+    const absEntry = path.resolve(entry);
+    const label = path.basename(absEntry) || absEntry;
+    const projectsDir = path.join(absEntry, "projects");
+    if (!fs.existsSync(projectsDir)) {
+      console.error(`  Claude (${label}) skipped: missing projects/ subdir at ${absEntry}`);
       continue;
     }
-    claudeResults.push(
-      collectCcusage(CCUSAGE, sinceStr, label, {
-        CLAUDE_CONFIG_DIR: configDir,
-        // Multi-machine dirs can be large; give ccusage more heap headroom.
-        NODE_OPTIONS: "--max-old-space-size=8192",
-      }, CCUSAGE_TIMEOUT_MS),
-    );
+    const dataDir = agentsviewDataDirFor(absEntry);
+    let remoteDaily;
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+      remoteDaily = collectAgentsviewClaudeOnly(agentsviewBin, sinceStr, {
+        AGENT_VIEWER_DATA_DIR: dataDir,
+        CLAUDE_PROJECTS_DIR: projectsDir,
+      });
+    } catch (err) {
+      console.error(`  Claude (${label}) failed: ${err.message}`);
+      continue;
+    }
+    console.log(`  Claude (${label}): ${remoteDaily.length} days`);
+    claudeDaily = claudeDaily.concat(remoteDaily);
   }
-
-  const { daily: claudeDaily, err: claudeErr } = aggregateClaudeResults(claudeResults);
-  if (claudeErr) throw claudeErr;
-
-  const codexDaily = collectCodexUsage(sinceStr);
-  console.log(`  Codex: ${codexDaily.length} days`);
 
   // Optional — requires OPENAI_ADMIN_KEY. Covers API-key-authenticated usage
   // from platform.openai.com/usage. If your Codex is API-key-authed, leave
