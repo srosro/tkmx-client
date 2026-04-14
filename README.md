@@ -157,6 +157,14 @@ If you're updating an existing install, refer to the config table above and add 
 
 v1.3.0 replaces `ccusage` + the direct codex sqlite reader with [agentsview](https://www.agentsview.io/token-usage/) for all local Claude and Codex token collection. `EXTRA_CLAUDE_CONFIGS` — the feature for aggregating usage from synced remote `~/.claude` directories — also goes through agentsview (it creates a per-config-dir sqlite under `~/.agentsview-tkmx/<hash>/` for isolated incremental sync).
 
+### Why upgrade?
+
+1. **Correct codex token counts.** v1.x's `~/.codex/state_*.sqlite` reader was silently dropping cache-read tokens. Expect your **codex `total_tokens` to jump ~+90%** on active codex machines (Claude numbers are unaffected). This is agentsview counting tokens that were always being spent but never appearing in your reports — **a correction, not inflation.** Nothing is double-counted.
+2. **Accurate cost.** agentsview computes per-field cost via LiteLLM and the server respects it, so codex dollar figures on your profile go from server-side blended estimates to actual per-model rates.
+3. **~200× faster** on large histories via agentsview's incremental SQLite sync, instead of walking every JSONL transcript on every run.
+4. **Bonus: free session viewer.** You now have `agentsview` installed — run `agentsview` in a terminal and you get a full local web UI for browsing and full-text-searching every Claude + Codex session you've ever had. It's a real product, not a data-access tool. See https://agentsview.io for the full feature set.
+5. **Single install story going forward.** One dependency to install, not "ccusage or codex-sqlite-reader depending on which flag you set."
+
 **If you can install agentsview:** `git pull`, install agentsview, run `npm run report`. That's it — existing `.env` settings are unchanged. The `USE_AGENTSVIEW` flag and `CCUSAGE_TIMEOUT_MS` are gone (delete them from your `.env` if present — they're ignored).
 
 **If you can't or don't want to install agentsview:** pin to the last ccusage-based release. This is a real, working version — it will stay reachable:
