@@ -187,10 +187,18 @@ async function main() {
   const agentsviewBin = resolveAgentsview();
   if (!agentsviewBin) {
     console.error("");
-    console.error("agentsview not found on PATH.");
+    console.error("agentsview not found.");
     console.error("");
     console.error("tkmx-client v2.0.0 requires agentsview for local token usage collection.");
-    console.error("Install: https://agentsview.io/quickstart/");
+    console.error("");
+    console.error("Install (macOS / Linux):");
+    console.error("  curl -fsSL https://agentsview.io/install.sh | bash");
+    console.error("");
+    console.error("Windows:");
+    console.error("  powershell -ExecutionPolicy ByPass -c \"irm https://agentsview.io/install.ps1 | iex\"");
+    console.error("");
+    console.error("Custom install location? Set AGENTSVIEW_BIN=/path/to/agentsview");
+    console.error("More: https://agentsview.io/quickstart/");
     console.error("");
     console.error("Prefer the previous ccusage-based flow? Pin to v1.2.0:");
     console.error("  cd tkmx-client && git checkout v1.2.0 && npm install");

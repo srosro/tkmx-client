@@ -22,7 +22,21 @@ npm run install-service           # auto-report every 2 hours
 
 ### 1. Install dependencies
 
-[agentsview](https://www.agentsview.io/token-usage/) is required — it reads your local Claude Code and Codex usage data from an incrementally-synced SQLite index, which is dramatically faster than walking every JSONL transcript. See https://agentsview.io/quickstart/ for install instructions. Codex CLI usage is auto-detected from `~/.codex/` — no extra setup beyond agentsview.
+[agentsview](https://www.agentsview.io/token-usage/) is required — it reads your local Claude Code and Codex usage data from an incrementally-synced SQLite index, which is dramatically faster than walking every JSONL transcript.
+
+**macOS / Linux:**
+
+```bash
+curl -fsSL https://agentsview.io/install.sh | bash
+```
+
+**Windows:**
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://agentsview.io/install.ps1 | iex"
+```
+
+The installer drops the binary in `~/.local/bin/agentsview` by default. If you install somewhere else (nix, asdf, custom prefix), set `AGENTSVIEW_BIN=/path/to/agentsview` in your `.env` and tkmx-client will use that. See https://agentsview.io/quickstart/ for more. Codex CLI usage is auto-detected from `~/.codex/` — no extra setup beyond agentsview.
 
 > **Previously using ccusage?** v1.x of this client used `ccusage`. If you prefer the old flow and don't want to install agentsview, pin to the v1.2.0 tag:
 >
