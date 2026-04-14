@@ -22,16 +22,35 @@ function collectOutcomeStats(cwds, sinceDateStr) {
 
   const sinceDate = `${sinceDateStr.slice(0, 4)}-${sinceDateStr.slice(4, 6)}-${sinceDateStr.slice(6, 8)}`;
 
+  // Read the repo's configured author email. Returns null if user.email
+  // isn't set for this repo (git falls back to global, which is fine —
+  // we return whatever `git config user.email` resolves). Returns null on
+  // any failure so the caller can skip repos with no identity.
+  function repoAuthorEmail(repo) {
+    try {
+      const email = execFileSync("git", ["config", "user.email"], {
+        cwd: repo, encoding: "utf-8", timeout: 5000,
+      }).trim();
+      return email || null;
+    } catch { return null; }
+  }
+
   let totalCommits = 0;
   let totalAdded = 0;
   let totalRemoved = 0;
   let totalFilesChanged = 0;
 
+  const authoredRepos = new Set();
+
   for (const repo of repos) {
+    const authorEmail = repoAuthorEmail(repo);
+    if (!authorEmail) continue;
+    authoredRepos.add(repo);
     try {
       const log = execFileSync(
         "git",
-        ["log", `--since=${sinceDate}`, "--shortstat", "--format=format:COMMIT"],
+        ["log", `--since=${sinceDate}`, "--shortstat",
+         `--author=${authorEmail}`, "--format=format:COMMIT"],
         { cwd: repo, encoding: "utf-8", timeout: 15000 },
       );
 
@@ -54,7 +73,7 @@ function collectOutcomeStats(cwds, sinceDateStr) {
   // Optional: PR stats via gh CLI
   let prsOpened = 0;
   let prsMerged = 0;
-  for (const repo of repos) {
+  for (const repo of authoredRepos) {
     try {
       const raw = execFileSync(
         "gh",
@@ -69,7 +88,7 @@ function collectOutcomeStats(cwds, sinceDateStr) {
   }
 
   return {
-    repos_active: repos.size,
+    repos_active: authoredRepos.size,
     commits: totalCommits,
     loc_added: totalAdded,
     loc_removed: totalRemoved,
