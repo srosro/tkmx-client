@@ -1,6 +1,14 @@
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 
+// execFileSync inherits stderr to the parent by default, so every
+// expected-failure call inside a try/continue pattern below would
+// leak git's "fatal: not a git repository" and gh's "no git remotes
+// found" noise into the reporter output (and log file) even though
+// we handle the throw correctly. Silencing stderr here is safe — any
+// real failure still surfaces via the thrown exception.
+const quietStdio = ["ignore", "pipe", "ignore"];
+
 // Collect aggregate git outcome metrics from repos Claude touched.
 // cwds: array of directory paths from workflow.js
 // sinceDateStr: YYYYMMDD
@@ -12,7 +20,7 @@ function collectOutcomeStats(cwds, sinceDateStr) {
     try {
       if (!fs.existsSync(cwd)) continue;
       const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-        cwd, encoding: "utf-8", timeout: 5000,
+        cwd, encoding: "utf-8", timeout: 5000, stdio: quietStdio,
       }).trim();
       repos.add(root);
     } catch { continue; }
@@ -33,7 +41,7 @@ function collectOutcomeStats(cwds, sinceDateStr) {
     const read = (scope) => {
       try {
         return execFileSync("git", ["config", scope, "user.email"], {
-          cwd: repo, encoding: "utf-8", timeout: 5000,
+          cwd: repo, encoding: "utf-8", timeout: 5000, stdio: quietStdio,
         }).trim() || null;
       } catch { return null; }
     };
@@ -61,7 +69,7 @@ function collectOutcomeStats(cwds, sinceDateStr) {
         "git",
         ["log", `--since=${sinceDate}`, "--shortstat",
          `--author=<${authorEmail}>`, "--format=format:COMMIT"],
-        { cwd: repo, encoding: "utf-8", timeout: 15000 },
+        { cwd: repo, encoding: "utf-8", timeout: 15000, stdio: quietStdio },
       );
 
       let repoCommits = 0;
@@ -94,7 +102,7 @@ function collectOutcomeStats(cwds, sinceDateStr) {
         "gh",
         ["pr", "list", "--state=all", "--author=@me", `--search=created:>=${sinceDate}`,
          "--json", "state", "--limit", "200"],
-        { cwd: repo, encoding: "utf-8", timeout: 15000 },
+        { cwd: repo, encoding: "utf-8", timeout: 15000, stdio: quietStdio },
       );
       const prs = JSON.parse(raw);
       prsOpened += prs.length;
