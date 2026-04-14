@@ -57,4 +57,77 @@ describe("collectOutcomeStats", () => {
     const result = collectOutcomeStats([tmpRepo, subdir], "20260101");
     assert.equal(result.repos_active, 1);
   });
+
+  it("excludes commits authored by other users", () => {
+    const mixedRepo = fs.mkdtempSync(path.join(os.tmpdir(), "tkmx-outcomes-mixed-"));
+    try {
+      execFileSync("git", ["init"], { cwd: mixedRepo });
+      execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: mixedRepo });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: mixedRepo });
+      fs.writeFileSync(path.join(mixedRepo, "a.txt"), "mine\n");
+      execFileSync("git", ["add", "a.txt"], { cwd: mixedRepo });
+      execFileSync("git", ["commit", "-m", "mine"], { cwd: mixedRepo });
+      // Switch identity and author an unrelated commit.
+      execFileSync("git", ["config", "user.email", "other@other.com"], { cwd: mixedRepo });
+      execFileSync("git", ["config", "user.name", "Other"], { cwd: mixedRepo });
+      fs.writeFileSync(path.join(mixedRepo, "b.txt"), "theirs\n");
+      execFileSync("git", ["add", "b.txt"], { cwd: mixedRepo });
+      execFileSync("git", ["commit", "-m", "theirs"], { cwd: mixedRepo });
+      // Restore the target identity so repoAuthorEmail reads it.
+      execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: mixedRepo });
+
+      const result = collectOutcomeStats([mixedRepo], "20260101");
+      assert.ok(result);
+      assert.equal(result.commits, 1);
+      assert.equal(result.repos_active, 1);
+    } finally {
+      fs.rmSync(mixedRepo, { recursive: true, force: true });
+    }
+  });
+
+  it("does not substring-match other emails (notsam vs sam)", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "tkmx-outcomes-substr-"));
+    try {
+      execFileSync("git", ["init"], { cwd: repo });
+      execFileSync("git", ["config", "user.email", "sam@acme.com"], { cwd: repo });
+      execFileSync("git", ["config", "user.name", "Sam"], { cwd: repo });
+      fs.writeFileSync(path.join(repo, "a.txt"), "sam\n");
+      execFileSync("git", ["add", "a.txt"], { cwd: repo });
+      execFileSync("git", ["commit", "-m", "sam"], { cwd: repo });
+      // A different author whose email is a superstring of sam@acme.com.
+      execFileSync("git", ["config", "user.email", "notsam@acme.com"], { cwd: repo });
+      execFileSync("git", ["config", "user.name", "NotSam"], { cwd: repo });
+      fs.writeFileSync(path.join(repo, "b.txt"), "notsam\n");
+      execFileSync("git", ["add", "b.txt"], { cwd: repo });
+      execFileSync("git", ["commit", "-m", "notsam"], { cwd: repo });
+      execFileSync("git", ["config", "user.email", "sam@acme.com"], { cwd: repo });
+
+      const result = collectOutcomeStats([repo], "20260101");
+      assert.equal(result.commits, 1);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("excludes repos where the author has no commits in the window (authoredRepos)", () => {
+    const activeRepo = tmpRepo;
+    const cloneRepo = fs.mkdtempSync(path.join(os.tmpdir(), "tkmx-outcomes-clone-"));
+    try {
+      execFileSync("git", ["init"], { cwd: cloneRepo });
+      execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: cloneRepo });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: cloneRepo });
+      // Commit authored by a different user — simulates a read-only clone
+      // the current user has never touched.
+      execFileSync("git", ["-c", "user.email=stranger@x.com", "-c", "user.name=Stranger",
+        "commit", "--allow-empty", "-m", "upstream"], { cwd: cloneRepo });
+
+      const result = collectOutcomeStats([activeRepo, cloneRepo], "20260101");
+      assert.ok(result);
+      assert.equal(result.repos_active, 1);
+      assert.equal(result.commits, 2);
+    } finally {
+      fs.rmSync(cloneRepo, { recursive: true, force: true });
+    }
+  });
+
 });
