@@ -160,4 +160,31 @@ describe("collectOutcomeStats", () => {
     }
   });
 
+  it("counts sibling-unique commits once in addition to shared history", () => {
+    // Sibling shares tmpRepo's two commits, then adds one unique commit
+    // on a local branch. Result should be: shared commits counted once,
+    // unique commit counted once, both repos marked active.
+    const sibling = fs.mkdtempSync(path.join(os.tmpdir(), "tkmx-outcomes-sibling-uniq-"));
+    try {
+      execFileSync("git", ["clone", tmpRepo, sibling], { stdio: "ignore" });
+      execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: sibling });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: sibling });
+      fs.writeFileSync(path.join(sibling, "sibling-only.txt"), "unique\nstuff\n");
+      execFileSync("git", ["add", "sibling-only.txt"], { cwd: sibling });
+      execFileSync("git", ["commit", "-m", "sibling unique"], { cwd: sibling });
+
+      const single = collectOutcomeStats([tmpRepo], "20260101");
+      const both = collectOutcomeStats([tmpRepo, sibling], "20260101");
+
+      assert.equal(both.commits, single.commits + 1,
+        "the sibling's unique commit must add exactly one");
+      assert.equal(both.loc_added, single.loc_added + 2,
+        "sibling-only.txt adds exactly 2 lines");
+      assert.equal(both.repos_active, 2,
+        "both repos contribute at least one unique SHA, so both are active");
+    } finally {
+      fs.rmSync(sibling, { recursive: true, force: true });
+    }
+  });
+
 });
