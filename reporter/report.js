@@ -18,6 +18,10 @@ const { collectConfigStack } = require("./config-stack");
 const { collectWorkflowStats } = require("./workflow");
 const { collectOutcomeStats } = require("./outcomes");
 const { collectCursorStats } = require("./cursor");
+const { collectSessionStats } = require("./session-stats");
+const { loadState, saveState, computeTransitionMarkers } = require("./reporting-state");
+
+const STATE_PATH = path.join(__dirname, "..", ".reporting-state.json");
 
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
@@ -275,6 +279,13 @@ async function main() {
   const machineConfig = collectMachineConfig();
   if (machineConfig) body.machine_config = machineConfig;
 
+  const priorState = loadState(STATE_PATH);
+  const currentState = {
+    dev_stats_on:     process.env.REPORT_DEV_STATS === "true",
+    session_stats_on: process.env.REPORT_SESSION_STATS !== "false"
+                      && process.env.REPORT_DEV_STATS === "true",
+  };
+
   // Dev stats — behavioral data gated behind REPORT_DEV_STATS=true
   if (process.env.REPORT_DEV_STATS === "true") {
     console.log("  Collecting dev stats...");
@@ -302,9 +313,32 @@ async function main() {
       body.codex_stats = codexStats;
       console.log(`  Codex stats: ${codexStats.sessions} sessions, ${codexStats.avg_tokens_per_session} avg tokens/session`);
     }
+
+    if (currentState.session_stats_on) {
+      console.log("  Collecting session stats (agentsview)...");
+      const ss = collectSessionStats({
+        sinceDays: Number(REPORT_DAYS) || 28,
+        ghToken:   process.env.GH_TOKEN || process.env.GITHUB_TOKEN,
+      });
+      if (ss) {
+        body.session_stats = ss;
+        console.log(`  Session stats: ${ss.totals?.sessions_all ?? "?"} sessions, schema v${ss.schema_version}`);
+      }
+    }
   }
 
+  // Apply any transition markers (one-shot clear signals for on→off flips).
+  const markers = computeTransitionMarkers(priorState, currentState);
+  if (markers.clear_dev_stats) body.clear_dev_stats = true;
+  if ("session_stats" in markers) body.session_stats = null;
+
   const response = await postUsage(JSON.stringify(body));
+
+  // Persist state only on successful POST — so a transition marker is
+  // retried on the next run if the POST failed.
+  if (response && response.ok !== false) {
+    saveState(STATE_PATH, currentState);
+  }
 
   const profileUrl = `${SERVER_URL}/user/${USERNAME}`;
   console.log(`  Profile: ${profileUrl}`);
