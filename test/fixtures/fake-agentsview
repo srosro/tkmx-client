@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Emits a minimal v1 session_stats blob when invoked with 'stats'.
+if [[ "$1" == "stats" ]]; then
+  cat <<'JSON'
+{"schema_version":1,"window":{"days":28},"totals":{"sessions_all":10},"generated_at":"2026-04-18T00:00:00Z"}
+JSON
+  exit 0
+fi
+echo "unexpected args: $*" >&2
+exit 2
