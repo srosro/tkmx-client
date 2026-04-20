@@ -5,19 +5,21 @@ const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const https = require("node:https");
-const { collectCodexStats } = require("./codex");
 const {
   collectAgentsviewUsage,
   collectAgentsviewClaudeOnly,
   resolveAgentsview,
+  detectAgentsviewVersion,
 } = require("./agentsview");
 const { collectOpenAIUsage } = require("./openai");
 const { mergeDailyUsage } = require("./merge");
 const { collectClaudeSkills } = require("./skills");
 const { collectConfigStack } = require("./config-stack");
-const { collectWorkflowStats } = require("./workflow");
-const { collectOutcomeStats } = require("./outcomes");
 const { collectCursorStats } = require("./cursor");
+const { collectSessionStats } = require("./session-stats");
+const { loadState, saveState, computeTransitionMarkers } = require("./reporting-state");
+
+const STATE_PATH = path.join(__dirname, "..", ".reporting-state.json");
 
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
@@ -206,6 +208,8 @@ async function main() {
     process.exit(1);
   }
   console.log(`  Using agentsview at ${agentsviewBin}`);
+  const agentsviewVersion = detectAgentsviewVersion(agentsviewBin);
+  if (agentsviewVersion) console.log(`  agentsview version: ${agentsviewVersion}`);
 
   // Local machine: agentsview's default data dir + default claude/codex dirs.
   const { claudeDaily: localClaudeDaily, codexDaily } = collectAgentsviewUsage(agentsviewBin, sinceStr);
@@ -269,27 +273,23 @@ async function main() {
     demo_video_url: DEMO_VIDEO_URL,
     client_id: CLIENT_ID,
     client_version: CLIENT_VERSION,
+    agentsview_version: agentsviewVersion || "",
     report_days: REPORT_DAYS,
     data: mergedDaily,
   };
   const machineConfig = collectMachineConfig();
   if (machineConfig) body.machine_config = machineConfig;
 
+  const priorState = loadState(STATE_PATH);
+  const currentState = {
+    dev_stats_on:     process.env.REPORT_DEV_STATS === "true",
+    session_stats_on: process.env.REPORT_SESSION_STATS !== "false"
+                      && process.env.REPORT_DEV_STATS === "true",
+  };
+
   // Dev stats — behavioral data gated behind REPORT_DEV_STATS=true
   if (process.env.REPORT_DEV_STATS === "true") {
     console.log("  Collecting dev stats...");
-
-    const workflowResult = await collectWorkflowStats(sinceStr);
-    if (workflowResult) {
-      body.workflow_stats = workflowResult.workflowStats;
-      console.log(`  Workflow: ${workflowResult.workflowStats.sessions} sessions, ${workflowResult.workflowStats.assistant_turns} turns`);
-
-      const outcomeStats = collectOutcomeStats(workflowResult.cwds, sinceStr);
-      if (outcomeStats) {
-        body.outcome_stats = outcomeStats;
-        console.log(`  Outcomes: ${outcomeStats.commits} commits across ${outcomeStats.repos_active} repos`);
-      }
-    }
 
     const cursorStats = collectCursorStats(sinceStr);
     if (cursorStats) {
@@ -297,14 +297,31 @@ async function main() {
       console.log(`  Cursor: ${cursorStats.scored_commits || 0} scored commits`);
     }
 
-    const codexStats = collectCodexStats(sinceStr);
-    if (codexStats) {
-      body.codex_stats = codexStats;
-      console.log(`  Codex stats: ${codexStats.sessions} sessions, ${codexStats.avg_tokens_per_session} avg tokens/session`);
+    if (currentState.session_stats_on) {
+      console.log("  Collecting session stats (agentsview)...");
+      // GH_TOKEN / GITHUB_TOKEN are inherited via child process.env — not
+      // forwarded on argv — to keep the token out of `ps`-visible args.
+      const ss = collectSessionStats({
+        sinceDays: Number(REPORT_DAYS) || 28,
+      });
+      if (ss) {
+        body.session_stats = ss;
+        console.log(`  Session stats: ${ss.totals?.sessions_all ?? "?"} sessions, schema v${ss.schema_version}`);
+      }
     }
   }
 
+  // Apply any transition markers (one-shot clear signals for on→off flips).
+  const markers = computeTransitionMarkers(priorState, currentState);
+  if (markers.clear_dev_stats) body.clear_dev_stats = true;
+  if ("session_stats" in markers) body.session_stats = null;
+
+  // postUsage throws on non-200, so reaching here means the POST succeeded
+  // and the server committed the transition. Persist state — a failed POST
+  // will have already thrown out of main(), leaving prior state intact so
+  // the transition marker retries on the next run.
   const response = await postUsage(JSON.stringify(body));
+  saveState(STATE_PATH, currentState);
 
   const profileUrl = `${SERVER_URL}/user/${USERNAME}`;
   console.log(`  Profile: ${profileUrl}`);
@@ -324,6 +341,13 @@ async function main() {
   if (response && response.client_update) {
     const bar = "=".repeat(72);
     console.log(`\n${bar}\n⚠️  CLIENT UPDATE AVAILABLE\n${bar}\n${response.client_update}\n${bar}`);
+  }
+  if (response && response.agentsview_update) {
+    const bar = "=".repeat(72);
+    console.log(`\n${bar}\n⚠️  AGENTSVIEW UPDATE REQUIRED\n${bar}\n${response.agentsview_update}\n${bar}`);
+  }
+  if (response && response.profile_frozen) {
+    console.log(`  Your profile will stay on its last snapshot until you update.`);
   }
 }
 
