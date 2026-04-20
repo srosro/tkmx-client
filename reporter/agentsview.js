@@ -38,6 +38,32 @@ function resolveAgentsview() {
   return null;
 }
 
+// Capture the agentsview version string. Returns a clean git-describe-style
+// version ("0.23.0" at a release, "0.23.0-2-g1b484fb" between releases) or
+// null when the binary is missing / `--version` fails.
+//
+// Expected raw output:
+//   "agentsview v0.23.0-2-g1b484fb (commit 1b484fb, built 2026-04-19T00:00:00Z)"
+//
+// We strip the "agentsview " prefix, the leading "v", and the "(commit ...,
+// built ...)" tail so the wire value is compact and directly displayable.
+// The server's MIN-version gate extracts the leading X.Y.Z for comparison.
+function detectAgentsviewVersion(bin, timeoutMs = 5000) {
+  if (!bin) return null;
+  let raw;
+  try {
+    raw = execFileSync(bin, ["--version"], {
+      encoding: "utf-8",
+      timeout: timeoutMs,
+    }).trim();
+  } catch (err) {
+    console.error(`  agentsview --version failed: ${err.message}`);
+    return null;
+  }
+  const m = raw.match(/v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/);
+  return m ? m[1] : null;
+}
+
 function toIsoDate(sinceStr) {
   return `${sinceStr.slice(0, 4)}-${sinceStr.slice(4, 6)}-${sinceStr.slice(6, 8)}`;
 }
@@ -105,4 +131,5 @@ module.exports = {
   parseAgentsviewOutput,
   toIsoDate,
   resolveAgentsview,
+  detectAgentsviewVersion,
 };

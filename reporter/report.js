@@ -9,6 +9,7 @@ const {
   collectAgentsviewUsage,
   collectAgentsviewClaudeOnly,
   resolveAgentsview,
+  detectAgentsviewVersion,
 } = require("./agentsview");
 const { collectOpenAIUsage } = require("./openai");
 const { mergeDailyUsage } = require("./merge");
@@ -207,6 +208,8 @@ async function main() {
     process.exit(1);
   }
   console.log(`  Using agentsview at ${agentsviewBin}`);
+  const agentsviewVersion = detectAgentsviewVersion(agentsviewBin);
+  if (agentsviewVersion) console.log(`  agentsview version: ${agentsviewVersion}`);
 
   // Local machine: agentsview's default data dir + default claude/codex dirs.
   const { claudeDaily: localClaudeDaily, codexDaily } = collectAgentsviewUsage(agentsviewBin, sinceStr);
@@ -270,6 +273,7 @@ async function main() {
     demo_video_url: DEMO_VIDEO_URL,
     client_id: CLIENT_ID,
     client_version: CLIENT_VERSION,
+    agentsview_version: agentsviewVersion || "",
     report_days: REPORT_DAYS,
     data: mergedDaily,
   };
@@ -337,6 +341,13 @@ async function main() {
   if (response && response.client_update) {
     const bar = "=".repeat(72);
     console.log(`\n${bar}\n⚠️  CLIENT UPDATE AVAILABLE\n${bar}\n${response.client_update}\n${bar}`);
+  }
+  if (response && response.agentsview_update) {
+    const bar = "=".repeat(72);
+    console.log(`\n${bar}\n⚠️  AGENTSVIEW UPDATE REQUIRED\n${bar}\n${response.agentsview_update}\n${bar}`);
+  }
+  if (response && response.profile_frozen) {
+    console.log(`  Your profile will stay on its last snapshot until you update.`);
   }
 }
 
