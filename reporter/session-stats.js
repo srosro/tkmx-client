@@ -8,7 +8,11 @@ const MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 // the parsed blob, or null on any error (missing binary, non-zero exit,
 // non-JSON output). Errors are logged but never propagate — the reporter
 // treats session stats as a best-effort addition and must keep working.
-function collectSessionStats({ sinceDays = 28, timezone, ghToken } = {}) {
+//
+// GH_TOKEN / GITHUB_TOKEN are passed through the child env (execFileSync
+// inherits process.env by default) rather than on argv, so the token
+// doesn't show up in `ps` output.
+function collectSessionStats({ sinceDays = 28, timezone } = {}) {
   const bin = resolveAgentsview();
   if (!bin) {
     console.error("[session-stats] agentsview binary not found; skipping");
@@ -16,7 +20,6 @@ function collectSessionStats({ sinceDays = 28, timezone, ghToken } = {}) {
   }
   const args = ["stats", "--format", "json", "--since", `${sinceDays}d`];
   if (timezone) args.push("--timezone", timezone);
-  if (ghToken)  args.push("--gh-token", ghToken);
 
   const execOpts = {
     encoding: "utf-8",

@@ -299,9 +299,10 @@ async function main() {
 
     if (currentState.session_stats_on) {
       console.log("  Collecting session stats (agentsview)...");
+      // GH_TOKEN / GITHUB_TOKEN are inherited via child process.env — not
+      // forwarded on argv — to keep the token out of `ps`-visible args.
       const ss = collectSessionStats({
         sinceDays: Number(REPORT_DAYS) || 28,
-        ghToken:   process.env.GH_TOKEN || process.env.GITHUB_TOKEN,
       });
       if (ss) {
         body.session_stats = ss;
@@ -315,13 +316,12 @@ async function main() {
   if (markers.clear_dev_stats) body.clear_dev_stats = true;
   if ("session_stats" in markers) body.session_stats = null;
 
+  // postUsage throws on non-200, so reaching here means the POST succeeded
+  // and the server committed the transition. Persist state — a failed POST
+  // will have already thrown out of main(), leaving prior state intact so
+  // the transition marker retries on the next run.
   const response = await postUsage(JSON.stringify(body));
-
-  // Persist state only on successful POST — so a transition marker is
-  // retried on the next run if the POST failed.
-  if (response && response.ok !== false) {
-    saveState(STATE_PATH, currentState);
-  }
+  saveState(STATE_PATH, currentState);
 
   const profileUrl = `${SERVER_URL}/user/${USERNAME}`;
   console.log(`  Profile: ${profileUrl}`);
