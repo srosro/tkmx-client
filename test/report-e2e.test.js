@@ -1,12 +1,14 @@
-// End-to-end regression test for the rolling-window scrubbing fix:
-// running reporter/report.js with REPORT_DAYS=1 must still invoke
-// agentsview with `--since 28d` for session_stats (and the 28d date for
-// cursor_stats) so the server's wholesale-replaced blobs don't lose 27
-// days of history.
+// End-to-end regression tests for the reporter's two-window contract:
+//   1. REPORT_DAYS=1 with activity must still invoke agentsview with
+//      --since 28d for session_stats so the wholesale-replaced blob keeps
+//      its full rolling window.
+//   2. An inactive day (no usage rows) must still POST so session_stats
+//      and cursor_stats get refreshed — previously the reporter returned
+//      early, which let stale blobs linger forever.
 //
-// Runs the actual report.js as a child process, stubs agentsview via
-// AGENTSVIEW_BIN to a recording bash script, and stubs the server via an
-// in-process http.Server. No real network, no real DB.
+// Both tests run the actual reporter/report.js as a child process, stub
+// agentsview via AGENTSVIEW_BIN to a recording bash script, and stub the
+// server via an in-process http.Server. No real network, no real DB.
 
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
@@ -15,6 +17,11 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+
+const REPO = path.join(__dirname, "..");
+const REPORT_JS = path.join(REPO, "reporter", "report.js");
+const STATE_PATH = path.join(REPO, ".reporting-state.json");
+const ENV_PATH = path.join(REPO, ".env");
 
 // Run reporter/report.js asynchronously so the in-process stub HTTP
 // server's request handler can fire — spawnSync would block the event
@@ -37,10 +44,96 @@ function runReporter(env, timeoutMs = 30000) {
   });
 }
 
-const REPO = path.join(__dirname, "..");
-const REPORT_JS = path.join(REPO, "reporter", "report.js");
-const STATE_PATH = path.join(REPO, ".reporting-state.json");
-const ENV_PATH = path.join(REPO, ".env");
+// Builds a temp fake-agentsview bash script. `dailyJson` is the value the
+// `usage` subcommand echoes — either a row for the "activity" scenario or
+// `{"daily":[]}` for the inactive scenario. The script also logs its argv
+// to argvLog so tests can inspect the --since windows.
+function writeFakeAgentsview(fakeBin, argvLog, dailyJson) {
+  fs.writeFileSync(
+    fakeBin,
+    `#!/usr/bin/env bash
+printf '%s\\t' "$@" >> "${argvLog}"
+printf '\\n' >> "${argvLog}"
+case "$1" in
+  --version)
+    echo "agentsview v0.25.0 (commit abcdef1, built 2026-04-24T00:00:00Z)"
+    ;;
+  usage)
+    echo '${dailyJson.replace(/'/g, "'\\''")}'
+    ;;
+  stats)
+    SINCE=""
+    for ((i=1; i<=$#; i++)); do
+      if [[ "\${!i}" == "--since" ]]; then
+        j=$((i+1))
+        SINCE="\${!j}"
+      fi
+    done
+    printf '{"schema_version":1,"window":{"days_arg":"%s"},"totals":{"sessions_all":7},"generated_at":"2026-04-24T00:00:00Z"}\\n' "$SINCE"
+    ;;
+  *)
+    echo "unexpected: $*" >&2
+    exit 2
+    ;;
+esac
+`,
+  );
+  fs.chmodSync(fakeBin, 0o755);
+}
+
+// Shared test scaffolding: tmp dir, fake-agentsview, stub server. Returns
+// everything the test needs plus a cleanup fn.
+async function setupE2E({ dailyJson }) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tkmx-e2e-"));
+  const argvLog = path.join(tmp, "argv.log");
+  const fakeBin = path.join(tmp, "fake-agentsview");
+  writeFakeAgentsview(fakeBin, argvLog, dailyJson);
+
+  let captured = null;
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      if (req.url === "/api/usage" && req.method === "POST") {
+        captured = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  const baseEnv = {
+    PATH: process.env.PATH,
+    HOME: tmp,  // isolates cursor db lookup
+    USERNAME: "e2euser",
+    API_KEY: "e2ekey",
+    CLIENT_ID: "e2e-client-id-fixed",  // avoid writing to .env
+    SERVER_URL: `http://127.0.0.1:${port}`,
+    AGENTSVIEW_BIN: fakeBin,
+    REPORT_DAYS: "1",
+    REPORT_DEV_STATS: "true",
+    REPORT_SESSION_STATS: "true",
+    // dotenv fills unset vars from .env, which would otherwise surface
+    // the developer's real REPORT_MACHINE_CONFIG=true and invoke codex
+    // / git from collectMachineConfig.
+    REPORT_MACHINE_CONFIG: "false",
+    EXTRA_CLAUDE_CONFIGS: "",
+    OPENAI_ADMIN_KEY: "",
+    TEAM: "e2e",
+  };
+
+  return {
+    argvLog,
+    baseEnv,
+    getCaptured: () => captured,
+    cleanup: () => {
+      server.close();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    },
+  };
+}
 
 // Preserve the user's .reporting-state.json and .env during this test —
 // the reporter writes to both on a successful run.
@@ -63,96 +156,21 @@ after(() => {
 });
 
 test("REPORT_DAYS=1 still invokes agentsview with --since 28d for session_stats", async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tkmx-e2e-"));
-  const argvLog = path.join(tmp, "argv.log");
-  const fakeBin = path.join(tmp, "fake-agentsview");
-
-  // Fake agentsview: records every invocation's argv to a log file, then
-  // emits minimal valid JSON for each subcommand the reporter uses.
-  fs.writeFileSync(
-    fakeBin,
-    `#!/usr/bin/env bash
-printf '%s\\t' "$@" >> "${argvLog}"
-printf '\\n' >> "${argvLog}"
-case "$1" in
-  --version)
-    echo "agentsview v0.25.0 (commit abcdef1, built 2026-04-24T00:00:00Z)"
-    ;;
-  usage)
-    # claude / codex both route here. Emit one dated row so mergedDaily
-    # is non-empty and the reporter doesn't short-circuit.
-    echo '{"daily":[{"date":"2026-04-23","modelBreakdowns":[{"modelName":"claude-sonnet-4-6","inputTokens":100,"outputTokens":50,"cacheCreationTokens":0,"cacheReadTokens":0}]}]}'
-    ;;
-  stats)
-    # Echo the requested --since window so the test can verify the
-    # reporter passed the 28d value, not REPORT_DAYS=1.
-    SINCE=""
-    for ((i=1; i<=$#; i++)); do
-      if [[ "\${!i}" == "--since" ]]; then
-        j=$((i+1))
-        SINCE="\${!j}"
-      fi
-    done
-    printf '{"schema_version":1,"window":{"days_arg":"%s"},"totals":{"sessions_all":7},"generated_at":"2026-04-24T00:00:00Z"}\\n' "$SINCE"
-    ;;
-  *)
-    echo "unexpected: $*" >&2
-    exit 2
-    ;;
-esac
-`,
-  );
-  fs.chmodSync(fakeBin, 0o755);
-
-  // Stub server: capture the first POST body and respond 200.
-  let captured = null;
-  const server = http.createServer((req, res) => {
-    const chunks = [];
-    req.on("data", (c) => chunks.push(c));
-    req.on("end", () => {
-      if (req.url === "/api/usage" && req.method === "POST") {
-        captured = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
-      }
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
-    });
+  const ctx = await setupE2E({
+    dailyJson:
+      '{"daily":[{"date":"2026-04-23","modelBreakdowns":[{"modelName":"claude-sonnet-4-6","inputTokens":100,"outputTokens":50,"cacheCreationTokens":0,"cacheReadTokens":0}]}]}',
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-
   try {
-    const result = await runReporter({
-      // Inherit PATH so /bin/bash resolves for the fake script's shebang.
-      PATH: process.env.PATH,
-      HOME: tmp,  // isolate cursor db lookup
-      USERNAME: "e2euser",
-      API_KEY: "e2ekey",
-      CLIENT_ID: "e2e-client-id-fixed",  // avoid writing to .env
-      SERVER_URL: `http://127.0.0.1:${port}`,
-      AGENTSVIEW_BIN: fakeBin,
-      REPORT_DAYS: "1",
-      REPORT_DEV_STATS: "true",
-      REPORT_SESSION_STATS: "true",
-      // Override whatever is in the user's .env — dotenv doesn't
-      // overwrite existing env vars but WILL fill in unset ones,
-      // which would otherwise surface the developer's real
-      // REPORT_MACHINE_CONFIG=true and trigger real codex/git
-      // invocations from collectMachineConfig.
-      REPORT_MACHINE_CONFIG: "false",
-      EXTRA_CLAUDE_CONFIGS: "",
-      OPENAI_ADMIN_KEY: "",
-      TEAM: "e2e",
-    });
-
+    const result = await runReporter(ctx.baseEnv);
     assert.equal(
       result.status,
       0,
       `reporter exited non-zero.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
+    const captured = ctx.getCaptured();
     assert.ok(captured, "server did not capture a POST body");
 
-    // Core assertion: session_stats was collected from a 28d window, not 1d.
-    const argvLines = fs.readFileSync(argvLog, "utf-8").trim().split("\n");
+    const argvLines = fs.readFileSync(ctx.argvLog, "utf-8").trim().split("\n");
     const statsInvocations = argvLines.filter((l) => l.startsWith("stats\t"));
     assert.ok(
       statsInvocations.length >= 1,
@@ -165,20 +183,53 @@ esac
         `stats invocation should use --since 28d, got: ${line}`,
       );
     }
-
-    // The fake echoed the --since back into window.days_arg; confirm the
-    // POSTed blob carries the 28d value that the reporter passed through.
     assert.equal(
       captured.session_stats?.window?.days_arg,
       "28d",
       "POSTed session_stats should reflect the 28d window that agentsview was asked for",
     );
-
-    // Sanity: report_days on the envelope still reflects REPORT_DAYS=1,
-    // so the row-merged data array keeps the short-window semantic.
     assert.equal(captured.report_days, 1);
   } finally {
-    server.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
+    ctx.cleanup();
+  }
+});
+
+test("inactive day (no usage rows) still posts and still refreshes session_stats", async () => {
+  // Regression: the reporter used to early-return when mergedDaily was
+  // empty, skipping session_stats / cursor_stats collection and the POST
+  // itself. That meant rolling-window blobs could not decay on an
+  // inactive REPORT_DAYS=1 day — stale data would linger on the profile
+  // until the next day with activity.
+  const ctx = await setupE2E({ dailyJson: '{"daily":[]}' });
+  try {
+    const result = await runReporter(ctx.baseEnv);
+    assert.equal(
+      result.status,
+      0,
+      `reporter exited non-zero.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+    const captured = ctx.getCaptured();
+    assert.ok(
+      captured,
+      "server should still receive a POST on an inactive day so blob fields can decay",
+    );
+    assert.deepEqual(captured.data, [], "body.data should be the empty array");
+    assert.ok(
+      captured.session_stats,
+      "session_stats should still be collected and sent on an inactive day",
+    );
+    assert.equal(
+      captured.session_stats.window?.days_arg,
+      "28d",
+      "session_stats must still reflect the 28d window, not REPORT_DAYS=1",
+    );
+    // Sanity: stats invocation still happened despite no usage rows.
+    const argvLines = fs.readFileSync(ctx.argvLog, "utf-8").trim().split("\n");
+    assert.ok(
+      argvLines.some((l) => l.startsWith("stats\t")),
+      `expected at least one 'stats' invocation on an inactive day; got ${argvLines.join(" | ")}`,
+    );
+  } finally {
+    ctx.cleanup();
   }
 });

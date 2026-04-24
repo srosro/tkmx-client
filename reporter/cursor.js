@@ -60,9 +60,17 @@ function collectCursorStats(sinceDateStr) {
       conversations[key] = row.count;
     }
 
-    if (commitStats.commits === 0 && Object.keys(conversations).length === 0) return null;
-
     const result = {};
+    // Note: when the DB is present but the 28d window has no activity,
+    // we fall through and return an empty object (not null). Upstream
+    // report.js uses `if (cursorStats)` to decide whether to attach —
+    // an empty object is truthy and therefore still lands in the POST,
+    // which is critical: the server's wholesale-replace semantics (see
+    // tkmx-server/server/db.js resolveMachineFields) would otherwise
+    // preserve the last non-empty blob indefinitely after the user
+    // stops using Cursor, leaving stale data on the profile forever.
+    // `null` is reserved for the "no Cursor DB on this machine" case
+    // (see getCursorDbPath above) where refreshing doesn't apply.
     if (commitStats.commits > 0) {
       result.scored_commits = commitStats.commits;
       result.tab_lines_added = commitStats.tab_lines_added;

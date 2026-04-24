@@ -258,8 +258,15 @@ async function main() {
   const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily, openaiDaily);
 
   if (mergedDaily.length === 0) {
-    console.log("No usage data to report.");
-    return;
+    // Previously we returned here, skipping session_stats / cursor_stats
+    // collection, transition markers, and the POST itself. That meant an
+    // inactive REPORT_DAYS=1 day would fail to refresh the rolling-window
+    // blobs — natural 28-day expiry of, say, Cursor usage would never
+    // take effect, and an on→off toggle of REPORT_DEV_STATS would miss
+    // its one-shot clear. Fall through so the server still sees us: an
+    // empty `data:[]` is valid per /api/usage and lets the wholesale-
+    // replaced blobs decay on schedule.
+    console.log("  No new token-usage rows in window; posting empty data[] to refresh rolling-window blobs.");
   }
 
   const body = {
