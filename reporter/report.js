@@ -175,6 +175,10 @@ function postUsage(payload) {
 
 async function main() {
   const REPORT_DAYS = parseInt(process.env.REPORT_DAYS) || 28;
+  // Two date windows: `sinceStr` bounds `body.data` (daily usage rows,
+  // merged per-date by the server — short windows safe), `statsSinceStr`
+  // bounds `body.session_stats` and `body.cursor_stats` (wholesale-
+  // replaced blobs — short windows scrub history). See reporter/window.js.
   const sinceStr = formatSinceStr(REPORT_DAYS);
   const statsSinceStr = formatSinceStr(STATS_WINDOW_DAYS);
 
