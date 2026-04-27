@@ -18,6 +18,7 @@ const { collectConfigStack } = require("./config-stack");
 const { collectCursorStats } = require("./cursor");
 const { collectSessionStats } = require("./session-stats");
 const { loadState, saveState, computeTransitionMarkers } = require("./reporting-state");
+const { STATS_WINDOW_DAYS, formatSinceStr } = require("./window");
 
 const STATE_PATH = path.join(__dirname, "..", ".reporting-state.json");
 
@@ -174,13 +175,12 @@ function postUsage(payload) {
 
 async function main() {
   const REPORT_DAYS = parseInt(process.env.REPORT_DAYS) || 28;
-
-  const since = new Date();
-  since.setDate(since.getDate() - REPORT_DAYS);
-  const sinceStr =
-    since.getFullYear().toString() +
-    (since.getMonth() + 1).toString().padStart(2, "0") +
-    since.getDate().toString().padStart(2, "0");
+  // Two date windows: `sinceStr` bounds `body.data` (daily usage rows,
+  // merged per-date by the server — short windows safe), `statsSinceStr`
+  // bounds `body.session_stats` and `body.cursor_stats` (wholesale-
+  // replaced blobs — short windows scrub history). See reporter/window.js.
+  const sinceStr = formatSinceStr(REPORT_DAYS);
+  const statsSinceStr = formatSinceStr(STATS_WINDOW_DAYS);
 
   console.log(`[${new Date().toISOString()}] Collecting ${REPORT_DAYS}d usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
 
@@ -258,8 +258,15 @@ async function main() {
   const mergedDaily = mergeDailyUsage(claudeDaily, codexDaily, openaiDaily);
 
   if (mergedDaily.length === 0) {
-    console.log("No usage data to report.");
-    return;
+    // Previously we returned here, skipping session_stats / cursor_stats
+    // collection, transition markers, and the POST itself. That meant an
+    // inactive REPORT_DAYS=1 day would fail to refresh the rolling-window
+    // blobs — natural 28-day expiry of, say, Cursor usage would never
+    // take effect, and an on→off toggle of REPORT_DEV_STATS would miss
+    // its one-shot clear. Fall through so the server still sees us: an
+    // empty `data:[]` is valid per /api/usage and lets the wholesale-
+    // replaced blobs decay on schedule.
+    console.log("  No new token-usage rows in window; posting empty data[] to refresh rolling-window blobs.");
   }
 
   const body = {
@@ -292,7 +299,7 @@ async function main() {
   if (currentState.dev_stats_on) {
     console.log("  Collecting dev stats...");
 
-    const cursorStats = collectCursorStats(sinceStr);
+    const cursorStats = collectCursorStats(statsSinceStr);
     if (cursorStats) {
       body.cursor_stats = cursorStats;
       console.log(`  Cursor: ${cursorStats.scored_commits || 0} scored commits`);
@@ -302,9 +309,7 @@ async function main() {
       console.log("  Collecting session stats (agentsview)...");
       // GH_TOKEN / GITHUB_TOKEN are inherited via child process.env — not
       // forwarded on argv — to keep the token out of `ps`-visible args.
-      const ss = collectSessionStats({
-        sinceDays: Number(REPORT_DAYS) || 28,
-      });
+      const ss = collectSessionStats({ sinceDays: STATS_WINDOW_DAYS });
       if (ss) {
         body.session_stats = ss;
         console.log(`  Session stats: ${ss.totals?.sessions_all ?? "?"} sessions, schema v${ss.schema_version}`);

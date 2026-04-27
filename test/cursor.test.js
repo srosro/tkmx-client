@@ -93,10 +93,15 @@ describe("collectCursorStats", () => {
     assert.equal(result.conversations["claude-3-5-sonnet/composer"], 1);
   });
 
-  it("returns null when no data in window", () => {
-    // Use a future date so nothing matches
+  it("returns an empty object (not null) when the DB is present but the window has no activity", () => {
+    // Use a future date so nothing matches. Returning {} rather than null
+    // is load-bearing: report.js's `if (cursorStats)` is truthy on {} and
+    // therefore still sends cursor_stats in the POST, which lets the
+    // server's wholesale-replace overwrite the prior (now-stale) blob.
+    // If this returned null, the body would omit cursor_stats entirely
+    // and old Cursor data would linger on the profile forever.
     const result = collectCursorStats("20270101");
-    assert.equal(result, null);
+    assert.deepEqual(result, {});
   });
 
   it("never includes commit messages or branch names", () => {
