@@ -9,7 +9,7 @@ import { mergeDailyUsage } from "../reporter/merge";
 // (every counter required, totalTokens included).
 const breakdown = (
   modelName: string,
-  overrides: { in?: number; out?: number; cw?: number; cr?: number; total?: number; cost?: number; source?: string; totalTokens?: number } = {},
+  overrides: { in?: number; out?: number; cw?: number; cr?: number; total?: number; cost?: number; source?: string } = {},
 ) => ({
   modelName,
   source: overrides.source,
@@ -17,7 +17,7 @@ const breakdown = (
   outputTokens: overrides.out || 0,
   cacheCreationTokens: overrides.cw || 0,
   cacheReadTokens: overrides.cr || 0,
-  totalTokens: overrides.totalTokens ?? overrides.total ?? 0,
+  totalTokens: overrides.total || 0,
   cost: overrides.cost,
 });
 
