@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import * as os from "node:os";
+import { LAUNCHD_LABEL, SYSTEMD_UNIT_BASENAME } from "./install";
 
 if (os.platform() === "darwin") {
   uninstallLaunchd();
@@ -13,13 +14,12 @@ if (os.platform() === "darwin") {
 }
 
 function uninstallLaunchd(): void {
-  const label = "com.token-tracking.reporter";
-  const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
+  const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
 
   if (fs.existsSync(plistPath)) {
     try {
       execSync(`launchctl unload "${plistPath}" 2>/dev/null`);
-      console.log(`Unloaded ${label}`);
+      console.log(`Unloaded ${LAUNCHD_LABEL}`);
     } catch {}
     fs.unlinkSync(plistPath);
     console.log(`Removed ${plistPath}`);
@@ -33,12 +33,12 @@ function uninstallLaunchd(): void {
 // on linux before relying on it.
 function uninstallSystemd(): void {
   const userDir = path.join(os.homedir(), ".config", "systemd", "user");
-  const servicePath = path.join(userDir, "token-tracking-reporter.service");
-  const timerPath = path.join(userDir, "token-tracking-reporter.timer");
+  const servicePath = path.join(userDir, `${SYSTEMD_UNIT_BASENAME}.service`);
+  const timerPath = path.join(userDir, `${SYSTEMD_UNIT_BASENAME}.timer`);
 
   try {
-    execSync("systemctl --user disable --now token-tracking-reporter.timer 2>/dev/null");
-    console.log("Disabled and stopped token-tracking-reporter.timer");
+    execSync(`systemctl --user disable --now ${SYSTEMD_UNIT_BASENAME}.timer 2>/dev/null`);
+    console.log(`Disabled and stopped ${SYSTEMD_UNIT_BASENAME}.timer`);
   } catch {}
 
   let removed = false;

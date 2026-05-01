@@ -139,6 +139,8 @@ npm install        # rebuilds dist/ via the prepare hook
 
 Your existing config (credentials, `CLIENT_ID`) is preserved — `git pull` never touches `.env`. **Do not re-clone or delete `.env` as an "update" — see the CLIENT_ID warning in [First run](#5-first-run).**
 
+> **Pre-TypeScript installs:** if your launchd plist or systemd unit was installed before the TypeScript migration, it still points at `reporter/report.js`. A compatibility shim at that path forwards to the compiled `dist/reporter/report.js`, so the daemon keeps working. To get a clean unit pointing at `dist/` directly, re-run `npm run install-service` once after this update — the shim can then be removed in a future release.
+
 ### What's new
 
 If you're updating an existing install, refer to the config table above and add any new `.env` values you don't already have:
