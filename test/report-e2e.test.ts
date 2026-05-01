@@ -22,15 +22,19 @@ import { spawn } from "node:child_process";
 // the compiled report.js is at dist/reporter/report.js (one level up).
 const REPO = path.join(__dirname, "..", "..");
 const REPORT_JS = path.join(__dirname, "..", "reporter", "report.js");
+const LEGACY_SHIM = path.join(REPO, "reporter", "report.js");
 const STATE_PATH = path.join(REPO, ".reporting-state.json");
 const ENV_PATH = path.join(REPO, ".env");
 
-// Run reporter/report.js asynchronously so the in-process stub HTTP
+// Run a reporter entrypoint asynchronously so the in-process stub HTTP
 // server's request handler can fire — spawnSync would block the event
 // loop for the entire child lifetime and the server would never respond.
-function runReporter(env: Record<string, string>, timeoutMs = 30000): Promise<{status: number | null; stdout: string; stderr: string}> {
+// `script` defaults to the compiled dist/reporter/report.js but can be
+// overridden so the legacy reporter/report.js compat shim gets the same
+// regression coverage.
+function runReporter(env: Record<string, string>, timeoutMs = 30000, script: string = REPORT_JS): Promise<{status: number | null; stdout: string; stderr: string}> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [REPORT_JS], {
+    const child = spawn(process.execPath, [script], {
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -232,6 +236,31 @@ test("inactive day (no usage rows) still posts and still refreshes session_stats
       argvLines.some((l) => l.startsWith("stats\t")),
       `expected at least one 'stats' invocation on an inactive day; got ${argvLines.join(" | ")}`,
     );
+  } finally {
+    ctx.cleanup();
+  }
+});
+
+test("legacy reporter/report.js compat shim forwards to the compiled reporter", async () => {
+  // Pre-TypeScript installs wrote launchd/systemd units pointing at
+  // <repo>/reporter/report.js. The migration replaced that file with a
+  // shim that requires ../dist/reporter/report.js. This test guards the
+  // shim path: an accidental deletion or a wrong relative require would
+  // break every pre-migration daemon silently after `git pull`.
+  const ctx = await setupE2E({
+    dailyJson:
+      '{"daily":[{"date":"2026-04-23","modelBreakdowns":[{"modelName":"claude-sonnet-4-6","inputTokens":42,"outputTokens":17,"cacheCreationTokens":0,"cacheReadTokens":0}]}]}',
+  });
+  try {
+    const result = await runReporter(ctx.baseEnv, 30000, LEGACY_SHIM);
+    assert.equal(
+      result.status,
+      0,
+      `shim exited non-zero.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+    const captured = ctx.getCaptured();
+    assert.ok(captured, "server should receive a POST when invoked through the shim");
+    assert.equal(captured.username, "e2euser", "POST body should reflect the shim's forwarded run");
   } finally {
     ctx.cleanup();
   }
