@@ -60,4 +60,8 @@ echo "    dev_stats:  $REPORT_DEV_STATS"
 echo "    session:    $REPORT_SESSION_STATS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-exec node reporter/report.js
+# Build the TypeScript sources before running. Idempotent — incremental
+# rebuilds are fast.
+npm run build --silent
+
+exec node dist/reporter/report.js

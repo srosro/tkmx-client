@@ -1,17 +1,17 @@
-const { describe, it, before, after, beforeEach } = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+import { describe, it, before, after, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 // config-stack reads from fixed paths, so we test the individual helpers
 // by checking they return sane types and don't crash on missing data
-const {
+import {
   collectMcpServers,
   collectHooks,
   collectClaudeMdStats,
   collectEnvironment,
-} = require("../reporter/config-stack");
+} from "../reporter/config-stack";
 
 describe("config-stack", () => {
   describe("collectMcpServers", () => {

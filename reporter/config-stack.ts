@@ -1,21 +1,27 @@
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { execFileSync } = require("node:child_process");
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 
 const CLAUDE_DIR = path.join(os.homedir(), ".claude");
 const SETTINGS_PATH = path.join(CLAUDE_DIR, "settings.json");
 
-function readJsonSafe(filePath) {
-  try { return JSON.parse(fs.readFileSync(filePath, "utf-8")); } catch { return null; }
+interface ClaudeSettings {
+  mcpServers?: Record<string, unknown>;
+  hooks?: Record<string, unknown>;
+  effortLevel?: string;
 }
 
-function countLines(filePath) {
+function readJsonSafe<T = ClaudeSettings>(filePath: string): T | null {
+  try { return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T; } catch { return null; }
+}
+
+function countLines(filePath: string): number {
   try { return fs.readFileSync(filePath, "utf-8").split("\n").length; } catch { return 0; }
 }
 
 // MCP server names from settings.json (names only, never credentials)
-function collectMcpServers() {
+export function collectMcpServers(): string[] {
   const settings = readJsonSafe(SETTINGS_PATH);
   if (!settings) return [];
   const servers = settings.mcpServers || {};
@@ -23,7 +29,7 @@ function collectMcpServers() {
 }
 
 // Hook event types and count from settings.json
-function collectHooks() {
+export function collectHooks(): { events: string[]; count: number } {
   const settings = readJsonSafe(SETTINGS_PATH);
   if (!settings) return { events: [], count: 0 };
   const hooks = settings.hooks || {};
@@ -37,9 +43,8 @@ function collectHooks() {
 }
 
 // CLAUDE.md presence and LOC at global + project levels
-function collectClaudeMdStats() {
+export function collectClaudeMdStats(): { global_loc: number; project_count: number } {
   const globalLoc = countLines(path.join(CLAUDE_DIR, "CLAUDE.md"));
-  // Count project-level CLAUDE.md files by scanning ~/.claude/projects
   let projectCount = 0;
   const projectsDir = path.join(CLAUDE_DIR, "projects");
   try {
@@ -52,32 +57,36 @@ function collectClaudeMdStats() {
 }
 
 // Effort level from settings
-function collectEffortLevel() {
+function collectEffortLevel(): string | null {
   const settings = readJsonSafe(SETTINGS_PATH);
   return settings?.effortLevel || null;
 }
 
+interface EnvironmentInfo {
+  shell?: string;
+  terminal?: string;
+  multiplexer?: string;
+  editor?: string;
+}
+
 // Shell, terminal, editor from environment
-function collectEnvironment() {
-  const env = {};
+export function collectEnvironment(): EnvironmentInfo {
+  const env: EnvironmentInfo = {};
   env.shell = path.basename(process.env.SHELL || "");
   if (process.env.TERM_PROGRAM) env.terminal = process.env.TERM_PROGRAM;
-  // Detect multiplexer
   if (process.env.TMUX) env.multiplexer = "tmux";
   else if (process.env.ZELLIJ) env.multiplexer = "zellij";
-  // Detect editor
   if (process.env.EDITOR) env.editor = path.basename(process.env.EDITOR);
   else if (process.env.VISUAL) env.editor = path.basename(process.env.VISUAL);
   return env;
 }
 
 // Count git worktrees across active project dirs
-function collectWorktreeCount() {
+export function collectWorktreeCount(): number {
   const projectsDir = path.join(CLAUDE_DIR, "projects");
-  const repoPaths = new Set();
+  const repoPaths = new Set<string>();
   try {
     for (const dir of fs.readdirSync(projectsDir)) {
-      // dir is like -Users-so-Hacking-tokenmaxxing → /Users/so/Hacking/tokenmaxxing
       const repoPath = "/" + dir.replace(/^-/, "").replace(/-/g, "/");
       if (fs.existsSync(path.join(repoPath, ".git"))) repoPaths.add(repoPath);
     }
@@ -90,15 +99,29 @@ function collectWorktreeCount() {
         cwd: repo, encoding: "utf-8", timeout: 5000,
       });
       const count = (out.match(/^worktree /gm) || []).length;
-      if (count > 1) totalWorktrees += count; // only count if >1 (main + extras)
+      if (count > 1) totalWorktrees += count;
     } catch {}
   }
   return totalWorktrees;
 }
 
+interface ConfigStack {
+  mcp_servers?: string[];
+  hook_events?: string[];
+  hook_count?: number;
+  claude_md_global_loc?: number;
+  claude_md_project_count?: number;
+  effort_level?: string;
+  shell?: string;
+  terminal?: string;
+  multiplexer?: string;
+  editor?: string;
+  git_worktrees?: number;
+}
+
 // Collect all config-stack data into a flat object to merge into machine_config
-function collectConfigStack() {
-  const cfg = {};
+export function collectConfigStack(): ConfigStack {
+  const cfg: ConfigStack = {};
 
   const mcpServers = collectMcpServers();
   if (mcpServers.length > 0) cfg.mcp_servers = mcpServers;
@@ -124,5 +147,3 @@ function collectConfigStack() {
 
   return cfg;
 }
-
-module.exports = { collectConfigStack, collectMcpServers, collectHooks, collectClaudeMdStats, collectEnvironment, collectWorktreeCount };

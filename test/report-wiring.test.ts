@@ -1,0 +1,44 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+// report.ts is a program, not a module — it runs on require (exits on
+// missing USERNAME/API_KEY and writes to .env on first run), so there's
+// no ergonomic way to unit-test its call-site wiring. Extracting a
+// testable body-builder would introduce a lot of surface churn for a
+// narrow guarantee.
+//
+// This is a single grep-style guard against the original scrubbing bug:
+// reintroducing REPORT_DAYS coupling to the rolling-window blob fields
+// (session_stats, cursor_stats), which the server stores wholesale and
+// would therefore lose history on short REPORT_DAYS runs.
+//
+// Why only cursor_stats here, not session_stats: the session_stats path
+// is covered behaviorally by `report-e2e.test.ts` (it asserts that
+// agentsview is invoked with `--since 28d` even when REPORT_DAYS=1).
+// cursor_stats is harder to E2E (would need a stub better-sqlite3 DB),
+// so the wiring grep stays as the cheaper-than-a-fixture coverage.
+// Drop this test once an equivalent E2E for cursor lands.
+
+// Grep the TypeScript source, not the compiled output — TS rewrites
+// import names (`collectCursorStats` → `cursor_1.collectCursorStats`)
+// which would break our patterns. After build, this test lives in
+// dist/test/, so the source is two levels up at PROJECT_ROOT/reporter.
+const SRC = fs.readFileSync(
+  path.join(__dirname, "..", "..", "reporter", "report.ts"),
+  "utf-8",
+);
+
+test("collectCursorStats uses statsSinceStr, not sinceStr", () => {
+  assert.match(
+    SRC,
+    /collectCursorStats\(\s*statsSinceStr\s*\)/,
+    "collectCursorStats should receive the 28d statsSinceStr",
+  );
+  assert.doesNotMatch(
+    SRC,
+    /collectCursorStats\(\s*sinceStr\s*\)/,
+    "cursor_stats must not be windowed by REPORT_DAYS",
+  );
+});

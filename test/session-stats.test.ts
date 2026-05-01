@@ -1,8 +1,8 @@
-const { test, beforeEach, afterEach } = require("node:test");
-const assert = require("node:assert/strict");
-const path = require("node:path");
-const fs = require("node:fs");
-const os = require("node:os");
+import { test, beforeEach, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import * as path from "node:path";
+import * as fs from "node:fs";
+import * as os from "node:os";
 
 // Each case runs with HOME + PATH reset so `resolveAgentsview` can't fall
 // through to a real agentsview install at ~/.local/bin/agentsview (a

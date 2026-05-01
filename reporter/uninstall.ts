@@ -1,7 +1,8 @@
-const fs = require("node:fs");
-const path = require("node:path");
-const { execSync } = require("node:child_process");
-const os = require("node:os");
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { execSync } from "node:child_process";
+import * as os from "node:os";
+import { LAUNCHD_LABEL, SYSTEMD_UNIT_BASENAME } from "./install";
 
 if (os.platform() === "darwin") {
   uninstallLaunchd();
@@ -12,14 +13,13 @@ if (os.platform() === "darwin") {
   process.exit(1);
 }
 
-function uninstallLaunchd() {
-  const label = "com.token-tracking.reporter";
-  const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
+function uninstallLaunchd(): void {
+  const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
 
   if (fs.existsSync(plistPath)) {
     try {
       execSync(`launchctl unload "${plistPath}" 2>/dev/null`);
-      console.log(`Unloaded ${label}`);
+      console.log(`Unloaded ${LAUNCHD_LABEL}`);
     } catch {}
     fs.unlinkSync(plistPath);
     console.log(`Removed ${plistPath}`);
@@ -29,16 +29,16 @@ function uninstallLaunchd() {
 }
 
 // NOTE: this systemd path is untested — author only verified the launchd
-// branch on darwin. Mirrors install.js step-for-step, but please sanity-check
+// branch on darwin. Mirrors install.ts step-for-step, but please sanity-check
 // on linux before relying on it.
-function uninstallSystemd() {
+function uninstallSystemd(): void {
   const userDir = path.join(os.homedir(), ".config", "systemd", "user");
-  const servicePath = path.join(userDir, "token-tracking-reporter.service");
-  const timerPath = path.join(userDir, "token-tracking-reporter.timer");
+  const servicePath = path.join(userDir, `${SYSTEMD_UNIT_BASENAME}.service`);
+  const timerPath = path.join(userDir, `${SYSTEMD_UNIT_BASENAME}.timer`);
 
   try {
-    execSync("systemctl --user disable --now token-tracking-reporter.timer 2>/dev/null");
-    console.log("Disabled and stopped token-tracking-reporter.timer");
+    execSync(`systemctl --user disable --now ${SYSTEMD_UNIT_BASENAME}.timer 2>/dev/null`);
+    console.log(`Disabled and stopped ${SYSTEMD_UNIT_BASENAME}.timer`);
   } catch {}
 
   let removed = false;

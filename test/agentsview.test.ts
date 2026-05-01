@@ -1,10 +1,10 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
-const path = require("node:path");
-const os = require("node:os");
-const fs = require("node:fs");
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import * as path from "node:path";
+import * as os from "node:os";
+import * as fs from "node:fs";
 
-const { parseAgentsviewOutput, toIsoDate } = require("../reporter/agentsview");
+import { parseAgentsviewOutput, toIsoDate } from "../reporter/agentsview";
 
 describe("toIsoDate", () => {
   it("converts YYYYMMDD to YYYY-MM-DD", () => {

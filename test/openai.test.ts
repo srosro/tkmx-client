@@ -1,7 +1,7 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 
-const { bucketsToDaily, collectOpenAIUsage } = require("../reporter/openai");
+import { bucketsToDaily, collectOpenAIUsage } from "../reporter/openai";
 
 // Unix timestamp for 2026-04-05 00:00:00 local time
 const APR_5_LOCAL = Math.floor(new Date(2026, 3, 5).getTime() / 1000);

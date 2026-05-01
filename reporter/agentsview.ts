@@ -1,5 +1,29 @@
-const { execFileSync } = require("node:child_process");
-const fs = require("node:fs");
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import { errMessage } from "./errors";
+import type { DailyUsage, ModelBreakdown } from "./usage";
+
+// Raw breakdown shape from `agentsview usage daily --json`. Token counters
+// may be omitted (agentsview elides zeros) and totalTokens is always
+// computed downstream — this is the wire shape, not the internal one.
+// Kept private to this module: only parseAgentsviewOutput sees it.
+interface RawModelBreakdown {
+  modelName: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+  cost?: number;
+  source?: string;
+}
+
+// Raw shape we accept from `agentsview usage daily --json`. Tolerant on
+// purpose — agentsview occasionally omits the modelBreakdowns array on
+// empty days.
+interface RawDailyEntry {
+  date: string;
+  modelBreakdowns?: RawModelBreakdown[];
+}
 
 // Resolve agentsview binary — launchd/systemd don't inherit user shell PATH,
 // so we can't rely on execvp's default search. Resolution order:
@@ -7,7 +31,7 @@ const fs = require("node:fs");
 //   2. Hard-coded install-location candidates (matches the quickstart)
 //   3. $PATH via `which agentsview` (covers interactive runs)
 // Lazy so tests can swap HOME per-case.
-function agentsviewCandidates() {
+function agentsviewCandidates(): string[] {
   return [
     `${process.env.HOME}/.local/bin/agentsview`,
     "/opt/homebrew/bin/agentsview",
@@ -15,7 +39,7 @@ function agentsviewCandidates() {
   ];
 }
 
-function isExecutableFile(p) {
+function isExecutableFile(p: string): boolean {
   try {
     if (!fs.statSync(p).isFile()) return false;
     fs.accessSync(p, fs.constants.X_OK);
@@ -23,7 +47,7 @@ function isExecutableFile(p) {
   } catch { return false; }
 }
 
-function resolveAgentsview() {
+export function resolveAgentsview(): string | null {
   const override = process.env.AGENTSVIEW_BIN;
   if (override && isExecutableFile(override)) return override;
   for (const p of agentsviewCandidates()) {
@@ -45,60 +69,81 @@ function resolveAgentsview() {
 // prefix and "(commit …, built …)" tail are dropped to keep the wire
 // value compact and directly displayable. Returns null if the binary is
 // missing or `--version` fails.
-function detectAgentsviewVersion(bin, timeoutMs = 5000) {
+export function detectAgentsviewVersion(bin: string | null, timeoutMs: number = 5000): string | null {
   if (!bin) return null;
-  let raw;
+  let raw: string;
   try {
     raw = execFileSync(bin, ["--version"], {
       encoding: "utf-8",
       timeout: timeoutMs,
     }).trim();
   } catch (err) {
-    console.error(`  agentsview --version failed: ${err.message}`);
+    console.error(`  agentsview --version failed: ${errMessage(err)}`);
     return null;
   }
   const m = raw.match(/v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/);
   return m ? m[1] : null;
 }
 
-function toIsoDate(sinceStr) {
+export function toIsoDate(sinceStr: string): string {
   return `${sinceStr.slice(0, 4)}-${sinceStr.slice(4, 6)}-${sinceStr.slice(6, 8)}`;
 }
 
-// agentsview breakdown rows carry per-token-type counts but no totalTokens
-// field; merge.js sums it, so compute it here.
-function parseAgentsviewOutput(parsed, source) {
-  const daily = parsed.daily || [];
-  for (const day of daily) {
-    for (const m of day.modelBreakdowns || []) {
-      m.source = source;
-      m.totalTokens =
-        (m.inputTokens || 0) +
-        (m.outputTokens || 0) +
-        (m.cacheCreationTokens || 0) +
-        (m.cacheReadTokens || 0);
-    }
-  }
-  return daily;
+interface AgentsviewJson {
+  daily?: RawDailyEntry[];
 }
 
-function queryAgent(bin, since, agent, noSync, timeoutMs, extraEnv) {
+// Convert `agentsview usage daily --json` output into the normalized
+// internal shape. Defaults missing per-token-type counters to 0 and
+// computes totalTokens once, so downstream code (merge.ts / report.ts)
+// can rely on every counter being a finite number.
+export function parseAgentsviewOutput(parsed: AgentsviewJson, source: string): DailyUsage[] {
+  const daily = parsed.daily || [];
+  return daily.map((day) => {
+    const modelBreakdowns: ModelBreakdown[] = (day.modelBreakdowns || []).map((m) => {
+      const inputTokens = m.inputTokens || 0;
+      const outputTokens = m.outputTokens || 0;
+      const cacheCreationTokens = m.cacheCreationTokens || 0;
+      const cacheReadTokens = m.cacheReadTokens || 0;
+      return {
+        modelName: m.modelName,
+        inputTokens,
+        outputTokens,
+        cacheCreationTokens,
+        cacheReadTokens,
+        totalTokens: inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens,
+        cost: m.cost,
+        source,
+      };
+    });
+    return { date: day.date, modelBreakdowns };
+  });
+}
+
+function queryAgent(
+  bin: string,
+  since: string,
+  agent: string,
+  noSync: boolean,
+  timeoutMs: number,
+  extraEnv?: Record<string, string>,
+): DailyUsage[] {
   const args = ["usage", "daily", "--json", "--breakdown", "--agent", agent, "--since", since];
   if (noSync) args.push("--no-sync");
-  const execOpts = { encoding: "utf-8", timeout: timeoutMs };
+  const execOpts: Parameters<typeof execFileSync>[2] = { encoding: "utf-8", timeout: timeoutMs };
   if (extraEnv) execOpts.env = { ...process.env, ...extraEnv };
-  let raw;
+  let raw: string;
   try {
-    raw = execFileSync(bin, args, execOpts);
+    raw = execFileSync(bin, args, execOpts) as string;
   } catch (err) {
-    const stderr = (err.stderr && err.stderr.toString().trim()) || "";
-    const detail = stderr ? `: ${stderr}` : `: ${err.message}`;
+    const stderr = (err as { stderr?: Buffer }).stderr?.toString().trim() || "";
+    const detail = stderr ? `: ${stderr}` : `: ${errMessage(err)}`;
     throw new Error(`agentsview ${agent} query failed${detail}`);
   }
   return parseAgentsviewOutput(JSON.parse(raw), agent);
 }
 
-function collectAgentsviewUsage(bin, sinceStr, timeoutMs = 180000) {
+export function collectAgentsviewUsage(bin: string, sinceStr: string, timeoutMs: number = 180000): { claudeDaily: DailyUsage[]; codexDaily: DailyUsage[] } {
   const since = toIsoDate(sinceStr);
 
   // One sync call covers every agent: agentsview's syncAllLocked
@@ -117,16 +162,7 @@ function collectAgentsviewUsage(bin, sinceStr, timeoutMs = 180000) {
 // dir + projects dir. Used for EXTRA_CLAUDE_CONFIGS entries where we
 // want per-remote-dir incremental sync without contaminating the local
 // machine's ~/.agentsview/sessions.db.
-function collectAgentsviewClaudeOnly(bin, sinceStr, env, timeoutMs = 180000) {
+export function collectAgentsviewClaudeOnly(bin: string, sinceStr: string, env: Record<string, string>, timeoutMs: number = 180000): DailyUsage[] {
   const since = toIsoDate(sinceStr);
   return queryAgent(bin, since, "claude", false, timeoutMs, env);
 }
-
-module.exports = {
-  collectAgentsviewUsage,
-  collectAgentsviewClaudeOnly,
-  parseAgentsviewOutput,
-  toIsoDate,
-  resolveAgentsview,
-  detectAgentsviewVersion,
-};

@@ -4,7 +4,9 @@ set shell := ["bash", "-cu"]
 default:
     @just --list
 
-# Run the Node test suite. Auto-installs deps if node_modules is missing.
+# Run the Node test suite. Always syncs deps from the lockfile so the
+# pre-merge gate fails loudly on code, not on a stale node_modules that
+# pre-dates a new dependency (typescript was added in the TS migration).
 test:
-    @[ -d node_modules ] || npm ci --silent
+    npm ci --silent
     npm test
