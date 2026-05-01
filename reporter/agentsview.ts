@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
+import { errMessage } from "./errors";
 
 export interface ModelBreakdown {
   modelName: string;
@@ -12,10 +13,26 @@ export interface ModelBreakdown {
   source?: string;
 }
 
-export interface DailyEntry {
+// Raw shape we accept from `agentsview usage daily --json`. Tolerant on
+// purpose — agentsview occasionally omits the modelBreakdowns array on
+// empty days, and tests pass partial shapes for the optionality cases.
+export interface RawDailyEntry {
   date: string;
   modelBreakdowns?: ModelBreakdown[];
 }
+
+// Normalized shape returned by parseAgentsviewOutput and consumed by
+// merge.ts / report.ts. modelBreakdowns is always present (possibly
+// empty) so downstream code doesn't need `|| []` guards or
+// `NonNullable<>` casts.
+export interface DailyUsage {
+  date: string;
+  modelBreakdowns: ModelBreakdown[];
+}
+
+// Re-export under the legacy name so existing consumers keep compiling.
+// Newer code should prefer DailyUsage.
+export type DailyEntry = DailyUsage;
 
 // Resolve agentsview binary — launchd/systemd don't inherit user shell PATH,
 // so we can't rely on execvp's default search. Resolution order:
@@ -70,8 +87,7 @@ export function detectAgentsviewVersion(bin: string | null, timeoutMs: number = 
       timeout: timeoutMs,
     }).trim();
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`  agentsview --version failed: ${msg}`);
+    console.error(`  agentsview --version failed: ${errMessage(err)}`);
     return null;
   }
   const m = raw.match(/v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/);
@@ -83,24 +99,27 @@ export function toIsoDate(sinceStr: string): string {
 }
 
 interface AgentsviewJson {
-  daily?: DailyEntry[];
+  daily?: RawDailyEntry[];
 }
 
 // agentsview breakdown rows carry per-token-type counts but no totalTokens
-// field; merge.ts sums it, so compute it here.
-export function parseAgentsviewOutput(parsed: AgentsviewJson, source: string): DailyEntry[] {
+// field; merge.ts sums it, so compute it here. Also fills in an empty
+// modelBreakdowns array on days where agentsview omitted it, so the
+// returned shape is the tighter `DailyUsage` (modelBreakdowns required).
+export function parseAgentsviewOutput(parsed: AgentsviewJson, source: string): DailyUsage[] {
   const daily = parsed.daily || [];
-  for (const day of daily) {
-    for (const m of day.modelBreakdowns || []) {
-      m.source = source;
-      m.totalTokens =
+  return daily.map((day) => {
+    const modelBreakdowns = (day.modelBreakdowns || []).map((m) => ({
+      ...m,
+      source,
+      totalTokens:
         (m.inputTokens || 0) +
         (m.outputTokens || 0) +
         (m.cacheCreationTokens || 0) +
-        (m.cacheReadTokens || 0);
-    }
-  }
-  return daily;
+        (m.cacheReadTokens || 0),
+    }));
+    return { date: day.date, modelBreakdowns };
+  });
 }
 
 function queryAgent(
@@ -119,15 +138,14 @@ function queryAgent(
   try {
     raw = execFileSync(bin, args, execOpts) as string;
   } catch (err) {
-    const e = err as NodeJS.ErrnoException & { stderr?: Buffer };
-    const stderr = (e.stderr && e.stderr.toString().trim()) || "";
-    const detail = stderr ? `: ${stderr}` : `: ${e.message}`;
+    const stderr = (err as { stderr?: Buffer }).stderr?.toString().trim() || "";
+    const detail = stderr ? `: ${stderr}` : `: ${errMessage(err)}`;
     throw new Error(`agentsview ${agent} query failed${detail}`);
   }
   return parseAgentsviewOutput(JSON.parse(raw), agent);
 }
 
-export function collectAgentsviewUsage(bin: string, sinceStr: string, timeoutMs: number = 180000): { claudeDaily: DailyEntry[]; codexDaily: DailyEntry[] } {
+export function collectAgentsviewUsage(bin: string, sinceStr: string, timeoutMs: number = 180000): { claudeDaily: DailyUsage[]; codexDaily: DailyUsage[] } {
   const since = toIsoDate(sinceStr);
 
   // One sync call covers every agent: agentsview's syncAllLocked
@@ -146,7 +164,7 @@ export function collectAgentsviewUsage(bin: string, sinceStr: string, timeoutMs:
 // dir + projects dir. Used for EXTRA_CLAUDE_CONFIGS entries where we
 // want per-remote-dir incremental sync without contaminating the local
 // machine's ~/.agentsview/sessions.db.
-export function collectAgentsviewClaudeOnly(bin: string, sinceStr: string, env: Record<string, string>, timeoutMs: number = 180000): DailyEntry[] {
+export function collectAgentsviewClaudeOnly(bin: string, sinceStr: string, env: Record<string, string>, timeoutMs: number = 180000): DailyUsage[] {
   const since = toIsoDate(sinceStr);
   return queryAgent(bin, since, "claude", false, timeoutMs, env);
 }

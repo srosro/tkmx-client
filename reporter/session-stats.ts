@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { resolveAgentsview } from "./agentsview";
+import { errMessage } from "./errors";
 
 const DEFAULT_TIMEOUT_MS = 180_000;  // 3 minutes — git integration can be slow
 const MAX_BUFFER_BYTES = 8 * 1024 * 1024;
@@ -37,9 +38,8 @@ export function collectSessionStats({ sinceDays = 28, timezone }: { sinceDays?: 
   try {
     raw = execFileSync(bin, args, execOpts);
   } catch (err) {
-    const e = err as NodeJS.ErrnoException & { stderr?: Buffer };
-    const stderr = (e.stderr && e.stderr.toString().trim()) || "";
-    const detail = stderr ? `: ${stderr}` : `: ${e.message}`;
+    const stderr = (err as { stderr?: Buffer }).stderr?.toString().trim() || "";
+    const detail = stderr ? `: ${stderr}` : `: ${errMessage(err)}`;
     console.error(`[session-stats] agentsview failed${detail}`);
     return null;
   }
@@ -48,8 +48,7 @@ export function collectSessionStats({ sinceDays = 28, timezone }: { sinceDays?: 
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[session-stats] JSON parse failed: ${msg}`);
+    console.error(`[session-stats] JSON parse failed: ${errMessage(err)}`);
     return null;
   }
 

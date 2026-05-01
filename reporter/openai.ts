@@ -1,5 +1,6 @@
 import * as https from "node:https";
-import type { DailyEntry } from "./agentsview";
+import type { DailyUsage } from "./agentsview";
+import { errMessage } from "./errors";
 
 // Fetch OpenAI platform usage (platform.openai.com/usage) for the given window.
 // Requires OPENAI_ADMIN_KEY in env — an admin API key (sk-admin-...), not a
@@ -51,8 +52,7 @@ function httpsGetJSON(url: string, apiKey: string): Promise<UsagePage> {
           try {
             resolve(JSON.parse(body));
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            reject(new Error(`Failed to parse OpenAI usage response: ${msg}`));
+            reject(new Error(`Failed to parse OpenAI usage response: ${errMessage(err)}`));
           }
         });
       },
@@ -89,8 +89,8 @@ async function fetchAllBuckets(endpoint: string, apiKey: string, startTime: numb
 // Convert OpenAI usage buckets to the modelBreakdowns-per-day shape the
 // reporter merges and submits. Uses local timezone for the date string so
 // days line up with ccusage/Codex dates.
-export function bucketsToDaily(buckets: UsageBucket[], source: string = "openai-api"): DailyEntry[] {
-  const byDate: Record<string, DailyEntry> = {};
+export function bucketsToDaily(buckets: UsageBucket[], source: string = "openai-api"): DailyUsage[] {
+  const byDate: Record<string, DailyUsage> = {};
   for (const bucket of buckets) {
     const date = new Date(bucket.start_time * 1000);
     const dateStr =
@@ -106,9 +106,8 @@ export function bucketsToDaily(buckets: UsageBucket[], source: string = "openai-
       const cachedInput = result.input_cached_tokens;
       if (inputTokensTotal === 0 && outputTokens === 0) continue;
 
-      const existing = byDate[dateStr] || { date: dateStr, modelBreakdowns: [] as Array<NonNullable<DailyEntry["modelBreakdowns"]>[number]> };
-      byDate[dateStr] = existing;
-      (existing.modelBreakdowns as NonNullable<DailyEntry["modelBreakdowns"]>).push({
+      const entry = byDate[dateStr] || (byDate[dateStr] = { date: dateStr, modelBreakdowns: [] });
+      entry.modelBreakdowns.push({
         modelName: result.model,
         // input_tokens in the OpenAI response already includes cached; split them
         // out so cache hits show up as cacheReadTokens (matches ccusage semantics).
@@ -123,7 +122,7 @@ export function bucketsToDaily(buckets: UsageBucket[], source: string = "openai-
   return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function collectOpenAIUsage(sinceDateStr: string): Promise<DailyEntry[]> {
+export async function collectOpenAIUsage(sinceDateStr: string): Promise<DailyUsage[]> {
   const apiKey = process.env.OPENAI_ADMIN_KEY;
   if (!apiKey) return [];
 

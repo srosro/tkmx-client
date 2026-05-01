@@ -19,6 +19,7 @@ import { collectCursorStats, type CursorStats } from "./cursor";
 import { collectSessionStats } from "./session-stats";
 import { loadState, saveState, computeTransitionMarkers } from "./reporting-state";
 import { STATS_WINDOW_DAYS, formatSinceStr } from "./window";
+import { errMessage } from "./errors";
 
 // PROJECT_ROOT is the actual checked-out repo (not dist/). After build, this
 // file lives in dist/reporter/report.js — go up two levels to reach the repo.
@@ -254,8 +255,7 @@ async function main(): Promise<void> {
         CLAUDE_PROJECTS_DIR: projectsDir,
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  Claude (${label}) failed: ${msg}`);
+      console.error(`  Claude (${label}) failed: ${errMessage(err)}`);
       continue;
     }
     console.log(`  Claude (${label}): ${remoteDaily.length} days`);
@@ -361,7 +361,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  const msg = err instanceof Error ? err.message : String(err);
-  console.error(`[${new Date().toISOString()}] Fatal:`, msg);
+  console.error(`[${new Date().toISOString()}] Fatal:`, errMessage(err));
   process.exit(1);
 });

@@ -1,6 +1,6 @@
-import type { DailyEntry, ModelBreakdown } from "./agentsview";
+import type { DailyUsage, ModelBreakdown } from "./agentsview";
 
-export type DailyUsage = DailyEntry;
+export type { DailyUsage } from "./agentsview";
 
 // Merge per-day usage from multiple sources. Within a date, model breakdowns
 // with the same (modelName, source) are summed — not concatenated — so the
@@ -8,12 +8,12 @@ export type DailyUsage = DailyEntry;
 // primary key within a single POST. This matters when one reporter aggregates
 // ccusage output from multiple machines (EXTRA_CLAUDE_CONFIGS), since a single
 // day can legitimately have the same claude model reported from each machine.
-export function mergeDailyUsage(...sources: DailyEntry[][]): DailyEntry[] {
-  const dayMap: Record<string, DailyEntry & { modelBreakdowns: ModelBreakdown[] }> = {};
+export function mergeDailyUsage(...sources: DailyUsage[][]): DailyUsage[] {
+  const dayMap: Record<string, DailyUsage> = {};
   for (const src of sources) {
     for (const day of src) {
       const entry = dayMap[day.date] || (dayMap[day.date] = { date: day.date, modelBreakdowns: [] });
-      for (const m of day.modelBreakdowns || []) {
+      for (const m of day.modelBreakdowns) {
         const key = `${m.modelName}|${m.source || ""}`;
         const existing = entry.modelBreakdowns.find(
           (b: ModelBreakdown) => `${b.modelName}|${b.source || ""}` === key,
