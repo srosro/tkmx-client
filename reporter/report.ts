@@ -1,30 +1,34 @@
-const { execFileSync } = require("node:child_process");
-const crypto = require("node:crypto");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const http = require("node:http");
-const https = require("node:https");
-const {
+import { execFileSync } from "node:child_process";
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import * as http from "node:http";
+import * as https from "node:https";
+import {
   collectAgentsviewUsage,
   collectAgentsviewClaudeOnly,
   resolveAgentsview,
   detectAgentsviewVersion,
-} = require("./agentsview");
-const { collectOpenAIUsage } = require("./openai");
-const { mergeDailyUsage } = require("./merge");
-const { collectClaudeSkills } = require("./skills");
-const { collectConfigStack } = require("./config-stack");
-const { collectCursorStats } = require("./cursor");
-const { collectSessionStats } = require("./session-stats");
-const { loadState, saveState, computeTransitionMarkers } = require("./reporting-state");
-const { STATS_WINDOW_DAYS, formatSinceStr } = require("./window");
+} from "./agentsview";
+import { collectOpenAIUsage } from "./openai";
+import { mergeDailyUsage, type DailyUsage } from "./merge";
+import { collectClaudeSkills } from "./skills";
+import { collectConfigStack } from "./config-stack";
+import { collectCursorStats, type CursorStats } from "./cursor";
+import { collectSessionStats } from "./session-stats";
+import { loadState, saveState, computeTransitionMarkers } from "./reporting-state";
+import { STATS_WINDOW_DAYS, formatSinceStr } from "./window";
 
-const STATE_PATH = path.join(__dirname, "..", ".reporting-state.json");
+// PROJECT_ROOT is the actual checked-out repo (not dist/). After build, this
+// file lives in dist/reporter/report.js — go up two levels to reach the repo.
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
+const STATE_PATH = path.join(PROJECT_ROOT, ".reporting-state.json");
 
-require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
+import * as dotenv from "dotenv";
+dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
 
-const { version: CLIENT_VERSION } = require("../package.json");
+import { version as CLIENT_VERSION } from "../package.json";
 const USERNAME = process.env.USERNAME;
 const SERVER_URL = process.env.SERVER_URL || "https://tokenmaxxing.odio.dev";
 const TEAM = process.env.TEAM || "default";
@@ -35,23 +39,16 @@ const PROJECTS = process.env.PROJECTS || "";
 const ABOUT = process.env.ABOUT || "";
 const HN_USERNAME = process.env.HN_USERNAME || "";
 const DEMO_VIDEO_URL = process.env.DEMO_VIDEO_URL || "";
-// Additional Claude config dirs to collect usage from (comma-separated). Each
-// must be a directory containing a `projects/` subdirectory of JSONL session
-// files — typically a synced snapshot of another machine's ~/.claude. Lets a
-// single reporter aggregate usage across several machines without installing
-// the client on each one.
 const EXTRA_CLAUDE_CONFIGS = process.env.EXTRA_CLAUDE_CONFIGS || "";
 
-const ENV_PATH = path.join(__dirname, "..", ".env");
+const ENV_PATH = path.join(PROJECT_ROOT, ".env");
 
 if (!USERNAME || !API_KEY) {
   console.error("USERNAME and API_KEY must be set in .env");
   process.exit(1);
 }
 
-// Read a per-host identifier from the OS so re-installs / parallel checkouts on
-// the same machine collapse to one CLIENT_ID instead of triple-counting usage.
-function readMachineId() {
+function readMachineId(): string | null {
   try {
     if (process.platform === "darwin") {
       const out = execFileSync("ioreg", ["-rd1", "-c", "IOPlatformExpertDevice"], { encoding: "utf8" });
@@ -69,20 +66,16 @@ function readMachineId() {
       const m = out.match(/MachineGuid\s+REG_SZ\s+([0-9a-fA-F-]+)/);
       if (m) return m[1];
     }
-  } catch (_) {}
+  } catch {}
   return null;
 }
 
-// Salted with username so the same host shared by two users yields two distinct
-// IDs, and so the raw OS identifier never leaves the machine.
-function deriveClientId(username) {
+function deriveClientId(username: string): string {
   const machineId = readMachineId();
   if (!machineId) return crypto.randomUUID();
   return crypto.createHash("sha256").update(machineId + "|" + username).digest("hex").slice(0, 32);
 }
 
-// Stable machine identifier — derived from OS, written to .env on first run.
-// Existing CLIENT_ID values in .env are preserved untouched.
 let CLIENT_ID = process.env.CLIENT_ID;
 if (!CLIENT_ID) {
   CLIENT_ID = deriveClientId(USERNAME);
@@ -90,37 +83,41 @@ if (!CLIENT_ID) {
   console.log(`Generated CLIENT_ID=${CLIENT_ID}`);
 }
 
-function parseExtraConfigs(raw) {
+function parseExtraConfigs(raw: string): string[] {
   return (raw || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
 }
 
-// Deterministic per-config-dir data directory so agentsview can
-// maintain a separate incrementally-synced sqlite for each remote
-// mirror without contaminating the local machine's
-// ~/.agentsview/sessions.db. Keyed by sha256 of the absolute path so
-// multiple tkmx-clients pointing at the same mirror share one db.
-function agentsviewDataDirFor(absConfigDir) {
+function agentsviewDataDirFor(absConfigDir: string): string {
   const hash = crypto.createHash("sha256").update(absConfigDir).digest("hex").slice(0, 16);
   return path.join(os.homedir(), ".agentsview-tkmx", hash);
 }
 
-function collectMachineConfig() {
+interface MachineConfig {
+  hostname: string;
+  os: string;
+  cpu: string;
+  memory_gb: number;
+  codex_version?: string;
+  claude_skills?: string[];
+  [key: string]: unknown;
+}
+
+function collectMachineConfig(): MachineConfig | null {
   if (process.env.REPORT_MACHINE_CONFIG !== "true") return null;
 
-  const cfg = { hostname: os.hostname(), os: os.platform() + " " + os.release(), cpu: "", memory_gb: Math.round(os.totalmem() / 1e9) };
+  const cfg: MachineConfig = { hostname: os.hostname(), os: os.platform() + " " + os.release(), cpu: "", memory_gb: Math.round(os.totalmem() / 1e9) };
   const cpus = os.cpus();
   if (cpus.length > 0) cfg.cpu = cpus[0].model.trim() + " (" + cpus.length + " cores)";
   try { cfg.codex_version = execFileSync("codex", ["--version"], { encoding: "utf-8", timeout: 5000 }).trim(); } catch {}
   const skills = collectClaudeSkills();
   if (skills.length > 0) cfg.claude_skills = skills;
   Object.assign(cfg, collectConfigStack());
-  // Only send if config changed since last report
   const cfgJson = JSON.stringify(cfg);
   const cfgHash = crypto.createHash("sha256").update(cfgJson).digest("hex").slice(0, 16);
-  const hashFile = path.join(__dirname, "..", ".machine_config_hash");
+  const hashFile = path.join(PROJECT_ROOT, ".machine_config_hash");
   const lastHash = fs.existsSync(hashFile) ? fs.readFileSync(hashFile, "utf-8").trim() : "";
   if (cfgHash !== lastHash) {
     fs.writeFileSync(hashFile, cfgHash);
@@ -130,6 +127,12 @@ function collectMachineConfig() {
   return null;
 }
 
+interface ServerResponse {
+  client_update?: string;
+  agentsview_update?: string;
+  profile_frozen?: boolean;
+}
+
 // Hey, you found the API call. Yes, you can post whatever you want — any tool,
 // any numbers. This is a trust-based system. We don't have server-side validation
 // that cross-checks your local usage logs because there's no way to do that without
@@ -137,7 +140,7 @@ function collectMachineConfig() {
 // devs can self-report honestly and learn from each other's setups. Please don't
 // pee in the punchbowl. If you want to add support for a new tool, we'd love a PR:
 // https://github.com/srosro/tkmx-client
-function postUsage(payload) {
+function postUsage(payload: string): Promise<ServerResponse> {
   const url = new URL("/api/usage", SERVER_URL);
   const transport = url.protocol === "https:" ? https : http;
 
@@ -161,11 +164,11 @@ function postUsage(payload) {
             reject(new Error(`Server returned ${res.statusCode}: ${body}`));
             return;
           }
-          let parsed = {};
+          let parsed: ServerResponse = {};
           try { parsed = JSON.parse(body); } catch {}
           resolve(parsed);
         });
-      }
+      },
     );
     req.on("error", reject);
     req.write(payload);
@@ -173,19 +176,37 @@ function postUsage(payload) {
   });
 }
 
-async function main() {
-  const REPORT_DAYS = parseInt(process.env.REPORT_DAYS) || 28;
+interface ReportBody {
+  username: string;
+  team: string;
+  tools: string;
+  communities: string;
+  projects: string;
+  about: string;
+  hn_username: string;
+  demo_video_url: string;
+  client_id: string;
+  client_version: string;
+  report_days: number;
+  data: DailyUsage[];
+  agentsview_version?: string;
+  machine_config?: MachineConfig;
+  cursor_stats?: CursorStats;
+  session_stats?: Record<string, unknown> | null;
+  clear_dev_stats?: boolean;
+}
+
+async function main(): Promise<void> {
+  const REPORT_DAYS = parseInt(process.env.REPORT_DAYS || "", 10) || 28;
   // Two date windows: `sinceStr` bounds `body.data` (daily usage rows,
   // merged per-date by the server — short windows safe), `statsSinceStr`
   // bounds `body.session_stats` and `body.cursor_stats` (wholesale-
-  // replaced blobs — short windows scrub history). See reporter/window.js.
+  // replaced blobs — short windows scrub history). See reporter/window.ts.
   const sinceStr = formatSinceStr(REPORT_DAYS);
   const statsSinceStr = formatSinceStr(STATS_WINDOW_DAYS);
 
   console.log(`[${new Date().toISOString()}] Collecting ${REPORT_DAYS}d usage since ${sinceStr} for ${USERNAME} (team: ${TEAM})`);
 
-  // Require agentsview — v1.3.0 dropped ccusage as a supported collector.
-  // Users who want the old flow can pin to the v1.2.0 tag.
   const agentsviewBin = resolveAgentsview();
   if (!agentsviewBin) {
     console.error("");
@@ -211,18 +232,11 @@ async function main() {
   const agentsviewVersion = detectAgentsviewVersion(agentsviewBin);
   if (agentsviewVersion) console.log(`  agentsview version: ${agentsviewVersion}`);
 
-  // Local machine: agentsview's default data dir + default claude/codex dirs.
   const { claudeDaily: localClaudeDaily, codexDaily } = collectAgentsviewUsage(agentsviewBin, sinceStr);
   console.log(`  Claude (local): ${localClaudeDaily.length} days`);
   console.log(`  Codex (local): ${codexDaily.length} days`);
 
-  // EXTRA_CLAUDE_CONFIGS: one agentsview invocation per remote dir, each
-  // with its own AGENT_VIEWER_DATA_DIR so incremental sync stays partitioned.
-  // CLAUDE_PROJECTS_DIR points at the .claude/projects subdir of each entry
-  // (tkmx-client's EXTRA_CLAUDE_CONFIGS semantic is still ".claude" roots —
-  // we append /projects internally to match agentsview's CLAUDE_PROJECTS_DIR
-  // convention).
-  let claudeDaily = [...localClaudeDaily];
+  let claudeDaily: DailyUsage[] = [...localClaudeDaily];
   for (const entry of parseExtraConfigs(EXTRA_CLAUDE_CONFIGS)) {
     const absEntry = path.resolve(entry);
     const label = path.basename(absEntry) || absEntry;
@@ -232,7 +246,7 @@ async function main() {
       continue;
     }
     const dataDir = agentsviewDataDirFor(absEntry);
-    let remoteDaily;
+    let remoteDaily: DailyUsage[];
     try {
       fs.mkdirSync(dataDir, { recursive: true });
       remoteDaily = collectAgentsviewClaudeOnly(agentsviewBin, sinceStr, {
@@ -240,16 +254,14 @@ async function main() {
         CLAUDE_PROJECTS_DIR: projectsDir,
       });
     } catch (err) {
-      console.error(`  Claude (${label}) failed: ${err.message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`  Claude (${label}) failed: ${msg}`);
       continue;
     }
     console.log(`  Claude (${label}): ${remoteDaily.length} days`);
     claudeDaily = claudeDaily.concat(remoteDaily);
   }
 
-  // Optional — requires OPENAI_ADMIN_KEY. Covers API-key-authenticated usage
-  // from platform.openai.com/usage. If your Codex is API-key-authed, leave
-  // OPENAI_ADMIN_KEY unset to avoid double-counting.
   const openaiDaily = await collectOpenAIUsage(sinceStr);
   if (openaiDaily.length > 0) {
     console.log(`  OpenAI platform: ${openaiDaily.length} days`);
@@ -269,8 +281,8 @@ async function main() {
     console.log("  No new token-usage rows in window; posting empty data[] to refresh rolling-window blobs.");
   }
 
-  const body = {
-    username: USERNAME,
+  const body: ReportBody = {
+    username: USERNAME as string,
     team: TEAM,
     tools: TOOLS,
     communities: COMMUNITIES,
@@ -278,13 +290,11 @@ async function main() {
     about: ABOUT,
     hn_username: HN_USERNAME,
     demo_video_url: DEMO_VIDEO_URL,
-    client_id: CLIENT_ID,
+    client_id: CLIENT_ID as string,
     client_version: CLIENT_VERSION,
     report_days: REPORT_DAYS,
     data: mergedDaily,
   };
-  // Omit when null so the server's grandfathering path (no key = old client,
-  // don't freeze) still triggers on a missing/failed `agentsview --version`.
   if (agentsviewVersion) body.agentsview_version = agentsviewVersion;
   const machineConfig = collectMachineConfig();
   if (machineConfig) body.machine_config = machineConfig;
@@ -307,8 +317,6 @@ async function main() {
 
     if (currentState.session_stats_on) {
       console.log("  Collecting session stats (agentsview)...");
-      // GH_TOKEN / GITHUB_TOKEN are inherited via child process.env — not
-      // forwarded on argv — to keep the token out of `ps`-visible args.
       const ss = collectSessionStats({ sinceDays: STATS_WINDOW_DAYS });
       if (ss) {
         body.session_stats = ss;
@@ -317,15 +325,10 @@ async function main() {
     }
   }
 
-  // Apply any transition markers (one-shot clear signals for on→off flips).
   const markers = computeTransitionMarkers(priorState, currentState);
   if (markers.clear_dev_stats) body.clear_dev_stats = true;
   if ("session_stats" in markers) body.session_stats = null;
 
-  // postUsage throws on non-200, so reaching here means the POST succeeded
-  // and the server committed the transition. Persist state — a failed POST
-  // will have already thrown out of main(), leaving prior state intact so
-  // the transition marker retries on the next run.
   const response = await postUsage(JSON.stringify(body));
   saveState(STATE_PATH, currentState);
 
@@ -358,6 +361,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(`[${new Date().toISOString()}] Fatal:`, err.message);
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(`[${new Date().toISOString()}] Fatal:`, msg);
   process.exit(1);
 });

@@ -12,13 +12,13 @@
 // continues to control the row-merged token-usage array (body.data),
 // where short windows are safe because the server merges per-day rows by
 // date rather than replacing the array.
-const STATS_WINDOW_DAYS = 28;
+export const STATS_WINDOW_DAYS = 28;
 
 // YYYYMMDD for `n` days ago in local time. Matches the date format
 // agentsview / codex / openai collectors expect for day-aligned usage
 // queries. The `now` parameter exists for deterministic tests — callers
 // should not pass it in production.
-function formatSinceStr(days, now = new Date()) {
+export function formatSinceStr(days: number, now: Date = new Date()): string {
   const d = new Date(now);
   d.setDate(d.getDate() - days);
   return (
@@ -27,5 +27,3 @@ function formatSinceStr(days, now = new Date()) {
     d.getDate().toString().padStart(2, "0")
   );
 }
-
-module.exports = { STATS_WINDOW_DAYS, formatSinceStr };

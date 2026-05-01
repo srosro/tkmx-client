@@ -1,4 +1,5 @@
-const https = require("node:https");
+import * as https from "node:https";
+import type { DailyEntry } from "./agentsview";
 
 // Fetch OpenAI platform usage (platform.openai.com/usage) for the given window.
 // Requires OPENAI_ADMIN_KEY in env — an admin API key (sk-admin-...), not a
@@ -13,7 +14,25 @@ const USAGE_BASE = "https://api.openai.com/v1/organization/usage";
 const REQUEST_TIMEOUT_MS = 30000;
 const MAX_PAGES = 10;
 
-function httpsGetJSON(url, apiKey) {
+interface UsageResult {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  input_cached_tokens: number;
+}
+
+interface UsageBucket {
+  start_time: number;
+  results: UsageResult[];
+}
+
+interface UsagePage {
+  data: UsageBucket[];
+  has_more?: boolean;
+  next_page?: string;
+}
+
+function httpsGetJSON(url: string, apiKey: string): Promise<UsagePage> {
   return new Promise((resolve, reject) => {
     const req = https.request(
       url,
@@ -32,10 +51,11 @@ function httpsGetJSON(url, apiKey) {
           try {
             resolve(JSON.parse(body));
           } catch (err) {
-            reject(new Error(`Failed to parse OpenAI usage response: ${err.message}`));
+            const msg = err instanceof Error ? err.message : String(err);
+            reject(new Error(`Failed to parse OpenAI usage response: ${msg}`));
           }
         });
-      }
+      },
     );
     req.on("error", reject);
     req.setTimeout(REQUEST_TIMEOUT_MS, () => {
@@ -45,9 +65,9 @@ function httpsGetJSON(url, apiKey) {
   });
 }
 
-async function fetchAllBuckets(endpoint, apiKey, startTime) {
-  const buckets = [];
-  let page = null;
+async function fetchAllBuckets(endpoint: string, apiKey: string, startTime: number): Promise<UsageBucket[]> {
+  const buckets: UsageBucket[] = [];
+  let page: string | null = null;
   // Safety cap: with bucket_width=1d&limit=31 a 30-day window fits in one page.
   // Grouped results don't increase page count, only result array size per bucket.
   for (let i = 0; i < MAX_PAGES; i++) {
@@ -69,8 +89,8 @@ async function fetchAllBuckets(endpoint, apiKey, startTime) {
 // Convert OpenAI usage buckets to the modelBreakdowns-per-day shape the
 // reporter merges and submits. Uses local timezone for the date string so
 // days line up with ccusage/Codex dates.
-function bucketsToDaily(buckets, source = "openai-api") {
-  const byDate = {};
+export function bucketsToDaily(buckets: UsageBucket[], source: string = "openai-api"): DailyEntry[] {
+  const byDate: Record<string, DailyEntry> = {};
   for (const bucket of buckets) {
     const date = new Date(bucket.start_time * 1000);
     const dateStr =
@@ -86,8 +106,9 @@ function bucketsToDaily(buckets, source = "openai-api") {
       const cachedInput = result.input_cached_tokens;
       if (inputTokensTotal === 0 && outputTokens === 0) continue;
 
-      byDate[dateStr] = byDate[dateStr] || { date: dateStr, modelBreakdowns: [] };
-      byDate[dateStr].modelBreakdowns.push({
+      const existing = byDate[dateStr] || { date: dateStr, modelBreakdowns: [] as Array<NonNullable<DailyEntry["modelBreakdowns"]>[number]> };
+      byDate[dateStr] = existing;
+      (existing.modelBreakdowns as NonNullable<DailyEntry["modelBreakdowns"]>).push({
         modelName: result.model,
         // input_tokens in the OpenAI response already includes cached; split them
         // out so cache hits show up as cacheReadTokens (matches ccusage semantics).
@@ -102,11 +123,10 @@ function bucketsToDaily(buckets, source = "openai-api") {
   return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-async function collectOpenAIUsage(sinceDateStr) {
+export async function collectOpenAIUsage(sinceDateStr: string): Promise<DailyEntry[]> {
   const apiKey = process.env.OPENAI_ADMIN_KEY;
   if (!apiKey) return [];
 
-  // sinceDateStr is YYYYMMDD — start of that day, local time (match codex.js).
   const y = parseInt(sinceDateStr.slice(0, 4), 10);
   const m = parseInt(sinceDateStr.slice(4, 6), 10) - 1;
   const d = parseInt(sinceDateStr.slice(6, 8), 10);
@@ -115,5 +135,3 @@ async function collectOpenAIUsage(sinceDateStr) {
   const buckets = await fetchAllBuckets("completions", apiKey, startTime);
   return bucketsToDaily(buckets);
 }
-
-module.exports = { collectOpenAIUsage, bucketsToDaily };

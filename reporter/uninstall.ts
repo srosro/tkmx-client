@@ -1,7 +1,7 @@
-const fs = require("node:fs");
-const path = require("node:path");
-const { execSync } = require("node:child_process");
-const os = require("node:os");
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { execSync } from "node:child_process";
+import * as os from "node:os";
 
 if (os.platform() === "darwin") {
   uninstallLaunchd();
@@ -12,7 +12,7 @@ if (os.platform() === "darwin") {
   process.exit(1);
 }
 
-function uninstallLaunchd() {
+function uninstallLaunchd(): void {
   const label = "com.token-tracking.reporter";
   const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
 
@@ -29,9 +29,9 @@ function uninstallLaunchd() {
 }
 
 // NOTE: this systemd path is untested — author only verified the launchd
-// branch on darwin. Mirrors install.js step-for-step, but please sanity-check
+// branch on darwin. Mirrors install.ts step-for-step, but please sanity-check
 // on linux before relying on it.
-function uninstallSystemd() {
+function uninstallSystemd(): void {
   const userDir = path.join(os.homedir(), ".config", "systemd", "user");
   const servicePath = path.join(userDir, "token-tracking-reporter.service");
   const timerPath = path.join(userDir, "token-tracking-reporter.timer");

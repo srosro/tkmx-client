@@ -1,7 +1,7 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 
-const { stableNodePath } = require("../reporter/install");
+import { stableNodePath } from "../reporter/install";
 
 describe("stableNodePath", () => {
   it("rewrites Apple Silicon brew cellar path to stable symlink", () => {

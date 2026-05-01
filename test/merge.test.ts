@@ -1,7 +1,7 @@
-const { describe, it } = require("node:test");
-const assert = require("node:assert/strict");
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 
-const { mergeDailyUsage } = require("../reporter/merge");
+import { mergeDailyUsage } from "../reporter/merge";
 
 describe("mergeDailyUsage", () => {
   it("merges two sources with overlapping dates", () => {

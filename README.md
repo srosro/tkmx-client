@@ -53,8 +53,10 @@ The installer drops the binary in `~/.local/bin/agentsview` by default. If you i
 ```
 git clone git@github.com:srosro/tkmx-client.git
 cd tkmx-client
-npm install
+npm install        # installs deps + builds dist/ (runs `npm run build` via prepare hook)
 ```
+
+> **Build:** the source is TypeScript; runtime ships compiled JS from `dist/`. `npm install` triggers the build automatically. To rebuild manually: `npm run build`. The launchd plist / systemd unit written by `install-service` points at `dist/reporter/report.js`, so end-user machines need only Node — no global TypeScript install required.
 
 ### 3. Register your username
 
@@ -132,7 +134,7 @@ systemctl --user status token-tracking-reporter.timer
 ```bash
 cd tkmx-client
 git pull
-npm install
+npm install        # rebuilds dist/ via the prepare hook
 ```
 
 Your existing config (credentials, `CLIENT_ID`) is preserved — `git pull` never touches `.env`. **Do not re-clone or delete `.env` as an "update" — see the CLIENT_ID warning in [First run](#5-first-run).**

@@ -3,14 +3,23 @@
   "version": "1.3.0",
   "private": true,
   "scripts": {
-    "report": "node reporter/report.js",
-    "install-service": "node reporter/install.js",
-    "uninstall-service": "node reporter/uninstall.js",
-    "test": "node --test test/*.test.js",
-    "dev-report": "bash scripts/dev-report.sh"
+    "build": "tsc",
+    "build:tests": "tsc -p tsconfig.test.json && cp -R test/fixtures dist/test/fixtures",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "report": "node dist/reporter/report.js",
+    "install-service": "node dist/reporter/install.js",
+    "uninstall-service": "node dist/reporter/uninstall.js",
+    "test": "npm run build && npm run build:tests && node --test dist/test/*.test.js",
+    "dev-report": "bash scripts/dev-report.sh",
+    "prepare": "tsc"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
     "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3"
   }
 }

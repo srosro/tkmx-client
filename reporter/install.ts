@@ -1,10 +1,12 @@
-const fs = require("node:fs");
-const path = require("node:path");
-const { execSync } = require("node:child_process");
-const os = require("node:os");
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { execSync } from "node:child_process";
+import * as os from "node:os";
 
-const PROJECT_ROOT = path.resolve(__dirname, "..");
-const REPORT_SCRIPT = path.join(PROJECT_ROOT, "reporter", "report.js");
+// PROJECT_ROOT is the actual checked-out repo, not dist/. After build, this
+// file lives in dist/reporter/install.js — go up two levels to reach the repo.
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
+const REPORT_SCRIPT = path.join(PROJECT_ROOT, "dist", "reporter", "report.js");
 
 // `process.execPath` points at the real on-disk node binary, which on Homebrew
 // is a versioned Cellar path like `/opt/homebrew/Cellar/node/25.8.1_1/bin/node`.
@@ -14,7 +16,10 @@ const REPORT_SCRIPT = path.join(PROJECT_ROOT, "reporter", "report.js");
 // stable `<prefix>/bin/node` symlink that brew keeps pointing at the current
 // version. nvm has the same fragility but no equivalent stable symlink, so we
 // warn instead.
-function stableNodePath(execPath, { existsSync = fs.existsSync } = {}) {
+export function stableNodePath(
+  execPath: string,
+  { existsSync = fs.existsSync }: { existsSync?: (p: string) => boolean } = {},
+): string {
   const brewMatch = execPath.match(/^(.*)\/Cellar\/node\/[^/]+\/bin\/node$/);
   if (brewMatch) {
     const stable = path.join(brewMatch[1], "bin", "node");
@@ -23,12 +28,12 @@ function stableNodePath(execPath, { existsSync = fs.existsSync } = {}) {
   return execPath;
 }
 
-function warnIfFragileNodePath(execPath) {
+function warnIfFragileNodePath(execPath: string): void {
   if (execPath.includes("/.nvm/versions/node/")) {
     console.warn(
       `Warning: installing against nvm node at ${execPath}. ` +
       `The service will break on \`nvm install\`/\`nvm uninstall\` of this version — ` +
-      `re-run \`npm run install-service\` after nvm changes, or install with Homebrew node for stability.`
+      `re-run \`npm run install-service\` after nvm changes, or install with Homebrew node for stability.`,
     );
   }
 }
@@ -47,9 +52,7 @@ if (require.main === module) {
   }
 }
 
-module.exports = { stableNodePath };
-
-function installLaunchd() {
+function installLaunchd(): void {
   const label = "com.token-tracking.reporter";
   const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
   const logPath = path.join(os.homedir(), "Library", "Logs", "token-tracking-reporter.log");
@@ -95,7 +98,7 @@ function installLaunchd() {
   console.log(`Loaded ${label} — will run every 2 hours and once now`);
 }
 
-function installSystemd() {
+function installSystemd(): void {
   const userDir = path.join(os.homedir(), ".config", "systemd", "user");
   fs.mkdirSync(userDir, { recursive: true });
 

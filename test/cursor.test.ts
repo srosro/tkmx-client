@@ -1,11 +1,11 @@
-const { describe, it, before, after } = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const Database = require("better-sqlite3");
+import { describe, it, before, after } from "node:test";
+import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import Database from "better-sqlite3";
 
-const { collectCursorStats } = require("../reporter/cursor");
+import { collectCursorStats } from "../reporter/cursor";
 
 describe("collectCursorStats", () => {
   let tmpDir;

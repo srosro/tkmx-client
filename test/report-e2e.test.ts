@@ -10,23 +10,25 @@
 // agentsview via AGENTSVIEW_BIN to a recording bash script, and stub the
 // server via an in-process http.Server. No real network, no real DB.
 
-const { test, before, after } = require("node:test");
-const assert = require("node:assert/strict");
-const http = require("node:http");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { spawn } = require("node:child_process");
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import * as http from "node:http";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { spawn } from "node:child_process";
 
-const REPO = path.join(__dirname, "..");
-const REPORT_JS = path.join(REPO, "reporter", "report.js");
+// After build, __dirname = dist/test/. Project root is two levels up;
+// the compiled report.js is at dist/reporter/report.js (one level up).
+const REPO = path.join(__dirname, "..", "..");
+const REPORT_JS = path.join(__dirname, "..", "reporter", "report.js");
 const STATE_PATH = path.join(REPO, ".reporting-state.json");
 const ENV_PATH = path.join(REPO, ".env");
 
 // Run reporter/report.js asynchronously so the in-process stub HTTP
 // server's request handler can fire — spawnSync would block the event
 // loop for the entire child lifetime and the server would never respond.
-function runReporter(env, timeoutMs = 30000) {
+function runReporter(env: Record<string, string>, timeoutMs = 30000): Promise<{status: number | null; stdout: string; stderr: string}> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [REPORT_JS], {
       env,
@@ -101,8 +103,9 @@ async function setupE2E({ dailyJson }) {
       res.end(JSON.stringify({ ok: true }));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const addr = server.address() as import("node:net").AddressInfo;
+  const { port } = addr;
 
   const baseEnv = {
     PATH: process.env.PATH,

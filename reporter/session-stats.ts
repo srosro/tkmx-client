@@ -1,8 +1,14 @@
-const { execFileSync } = require("node:child_process");
-const { resolveAgentsview } = require("./agentsview");
+import { execFileSync } from "node:child_process";
+import { resolveAgentsview } from "./agentsview";
 
 const DEFAULT_TIMEOUT_MS = 180_000;  // 3 minutes — git integration can be slow
 const MAX_BUFFER_BYTES = 8 * 1024 * 1024;
+
+export interface SessionStatsBlob {
+  schema_version: number;
+  totals?: { sessions_all?: number };
+  [key: string]: unknown;
+}
 
 // collectSessionStats runs `agentsview stats --format json` and returns
 // the parsed blob, or null on any error (missing binary, non-zero exit,
@@ -12,7 +18,7 @@ const MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 // GH_TOKEN / GITHUB_TOKEN are passed through the child env (execFileSync
 // inherits process.env by default) rather than on argv, so the token
 // doesn't show up in `ps` output.
-function collectSessionStats({ sinceDays = 28, timezone } = {}) {
+export function collectSessionStats({ sinceDays = 28, timezone }: { sinceDays?: number; timezone?: string } = {}): SessionStatsBlob | null {
   const bin = resolveAgentsview();
   if (!bin) {
     console.error("[session-stats] agentsview binary not found; skipping");
@@ -22,26 +28,28 @@ function collectSessionStats({ sinceDays = 28, timezone } = {}) {
   if (timezone) args.push("--timezone", timezone);
 
   const execOpts = {
-    encoding: "utf-8",
+    encoding: "utf-8" as const,
     maxBuffer: MAX_BUFFER_BYTES,
     timeout: DEFAULT_TIMEOUT_MS,
   };
 
-  let raw;
+  let raw: string;
   try {
     raw = execFileSync(bin, args, execOpts);
   } catch (err) {
-    const stderr = (err.stderr && err.stderr.toString().trim()) || "";
-    const detail = stderr ? `: ${stderr}` : `: ${err.message}`;
+    const e = err as NodeJS.ErrnoException & { stderr?: Buffer };
+    const stderr = (e.stderr && e.stderr.toString().trim()) || "";
+    const detail = stderr ? `: ${stderr}` : `: ${e.message}`;
     console.error(`[session-stats] agentsview failed${detail}`);
     return null;
   }
 
-  let parsed;
+  let parsed: SessionStatsBlob;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    console.error(`[session-stats] JSON parse failed: ${err.message}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[session-stats] JSON parse failed: ${msg}`);
     return null;
   }
 
@@ -51,5 +59,3 @@ function collectSessionStats({ sinceDays = 28, timezone } = {}) {
   }
   return parsed;
 }
-
-module.exports = { collectSessionStats };

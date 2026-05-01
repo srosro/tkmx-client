@@ -1,6 +1,6 @@
-const { test } = require("node:test");
-const assert = require("node:assert/strict");
-const { STATS_WINDOW_DAYS, formatSinceStr } = require("../reporter/window");
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { STATS_WINDOW_DAYS, formatSinceStr } from "../reporter/window";
 
 test("STATS_WINDOW_DAYS is 28 — keeps rolling-window blobs on a full 28d window", () => {
   assert.equal(STATS_WINDOW_DAYS, 28);

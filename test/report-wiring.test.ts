@@ -1,7 +1,7 @@
-const { test } = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // report.js is a program, not a module — it runs on require (exits on
 // missing USERNAME/API_KEY and writes to .env on first run), so there's
@@ -15,8 +15,12 @@ const path = require("node:path");
 // server stores wholesale and would therefore lose history on short
 // REPORT_DAYS runs.
 
+// Grep the TypeScript source, not the compiled output — TS rewrites
+// import names (`collectCursorStats` → `cursor_1.collectCursorStats`)
+// which would break our patterns. After build, this test lives in
+// dist/test/, so the source is two levels up at PROJECT_ROOT/reporter.
 const SRC = fs.readFileSync(
-  path.join(__dirname, "..", "reporter", "report.js"),
+  path.join(__dirname, "..", "..", "reporter", "report.ts"),
   "utf-8",
 );
 
