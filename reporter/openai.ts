@@ -1,5 +1,5 @@
 import * as https from "node:https";
-import type { DailyUsage } from "./agentsview";
+import type { DailyUsage } from "./usage";
 import { errMessage } from "./errors";
 
 // Fetch OpenAI platform usage (platform.openai.com/usage) for the given window.

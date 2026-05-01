@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import { errMessage } from "./errors";
+import type { DailyUsage, ModelBreakdown } from "./usage";
 
 // Raw breakdown shape from `agentsview usage daily --json`. Token counters
 // may be omitted (agentsview elides zeros) and totalTokens is always
@@ -16,37 +17,12 @@ interface RawModelBreakdown {
   source?: string;
 }
 
-// Normalized breakdown row consumed by merge.ts / report.ts. Token
-// counters are required (defaulted to 0 in the collector) so downstream
-// code can drop `(x || 0)` accumulators. totalTokens is also computed
-// once here; cost stays optional because the wire format only sets it
-// for some agents.
-export interface ModelBreakdown {
-  modelName: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheCreationTokens: number;
-  cacheReadTokens: number;
-  totalTokens: number;
-  cost?: number;
-  source?: string;
-}
-
 // Raw shape we accept from `agentsview usage daily --json`. Tolerant on
 // purpose — agentsview occasionally omits the modelBreakdowns array on
 // empty days.
 interface RawDailyEntry {
   date: string;
   modelBreakdowns?: RawModelBreakdown[];
-}
-
-// Normalized shape returned by parseAgentsviewOutput and consumed by
-// merge.ts / report.ts. modelBreakdowns is always present (possibly
-// empty); each row has required token counters. Downstream code doesn't
-// need `|| []` guards, `(x || 0)` accumulators, or `NonNullable<>` casts.
-export interface DailyUsage {
-  date: string;
-  modelBreakdowns: ModelBreakdown[];
 }
 
 // Resolve agentsview binary — launchd/systemd don't inherit user shell PATH,

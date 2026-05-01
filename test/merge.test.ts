@@ -3,29 +3,33 @@ import assert from "node:assert/strict";
 
 import { mergeDailyUsage } from "../reporter/merge";
 
-// Tiny breakdown factory — fills in zeros for whatever the tests don't
-// care about so they stay readable while still satisfying the strict
-// ModelBreakdown contract (every per-token-type counter required, plus
-// totalTokens computed once).
-const breakdown = (modelName: string, overrides: Record<string, number | string> = {}) => ({
+// Single test factory for ModelBreakdown rows. Fills in zeros for any
+// counter the test doesn't pin so call sites stay readable, while still
+// producing a row that satisfies the strict ModelBreakdown contract
+// (every counter required, totalTokens included).
+const breakdown = (
+  modelName: string,
+  overrides: { in?: number; out?: number; cw?: number; cr?: number; total?: number; cost?: number; source?: string; totalTokens?: number } = {},
+) => ({
   modelName,
-  inputTokens: 0,
-  outputTokens: 0,
-  cacheCreationTokens: 0,
-  cacheReadTokens: 0,
-  totalTokens: 0,
-  ...overrides,
+  source: overrides.source,
+  inputTokens: overrides.in || 0,
+  outputTokens: overrides.out || 0,
+  cacheCreationTokens: overrides.cw || 0,
+  cacheReadTokens: overrides.cr || 0,
+  totalTokens: overrides.totalTokens ?? overrides.total ?? 0,
+  cost: overrides.cost,
 });
 
 describe("mergeDailyUsage", () => {
   it("merges two sources with overlapping dates", () => {
     const claude = [
-      { date: "2026-04-05", modelBreakdowns: [breakdown("opus", { totalTokens: 100 })] },
-      { date: "2026-04-06", modelBreakdowns: [breakdown("opus", { totalTokens: 200 })] },
+      { date: "2026-04-05", modelBreakdowns: [breakdown("opus", { total: 100 })] },
+      { date: "2026-04-06", modelBreakdowns: [breakdown("opus", { total: 200 })] },
     ];
     const codex = [
-      { date: "2026-04-05", modelBreakdowns: [breakdown("o3", { totalTokens: 50 })] },
-      { date: "2026-04-07", modelBreakdowns: [breakdown("o3", { totalTokens: 300 })] },
+      { date: "2026-04-05", modelBreakdowns: [breakdown("o3", { total: 50 })] },
+      { date: "2026-04-07", modelBreakdowns: [breakdown("o3", { total: 300 })] },
     ];
 
     const result = mergeDailyUsage(claude, codex);
@@ -57,7 +61,7 @@ describe("mergeDailyUsage", () => {
 
   it("handles a single source", () => {
     const source = [
-      { date: "2026-04-05", modelBreakdowns: [breakdown("opus", { totalTokens: 100 })] },
+      { date: "2026-04-05", modelBreakdowns: [breakdown("opus", { total: 100 })] },
     ];
     const result = mergeDailyUsage(source);
     assert.equal(result.length, 1);
@@ -70,25 +74,14 @@ describe("mergeDailyUsage", () => {
   // INSERT OR REPLACE (keyed on user/date/model/client_id) would silently drop
   // all but one of the colliding rows.
 
-  const row = (modelName, totals, source = "claude") => ({
-    modelName,
-    source,
-    inputTokens: totals.in || 0,
-    outputTokens: totals.out || 0,
-    cacheCreationTokens: totals.cw || 0,
-    cacheReadTokens: totals.cr || 0,
-    totalTokens: totals.total || 0,
-    cost: totals.cost,
-  });
-
   it("sums tokens and cost when the same (date, model, source) appears in two sources", () => {
     const local = [{
       date: "2026-04-09",
-      modelBreakdowns: [row("claude-opus-4-6", { in: 100, out: 200, cw: 10, cr: 50, total: 360, cost: 1.25 })],
+      modelBreakdowns: [breakdown("claude-opus-4-6", { in: 100, out: 200, cw: 10, cr: 50, total: 360, cost: 1.25, source: "claude" })],
     }];
     const remote = [{
       date: "2026-04-09",
-      modelBreakdowns: [row("claude-opus-4-6", { in: 400, out: 800, cw: 40, cr: 150, total: 1390, cost: 4.75 })],
+      modelBreakdowns: [breakdown("claude-opus-4-6", { in: 400, out: 800, cw: 40, cr: 150, total: 1390, cost: 4.75, source: "claude" })],
     }];
 
     const result = mergeDailyUsage(local, remote);
@@ -108,11 +101,11 @@ describe("mergeDailyUsage", () => {
   it("keeps different models separate on the same day", () => {
     const local = [{
       date: "2026-04-09",
-      modelBreakdowns: [row("claude-opus-4-6", { total: 100 })],
+      modelBreakdowns: [breakdown("claude-opus-4-6", { total: 100 })],
     }];
     const remote = [{
       date: "2026-04-09",
-      modelBreakdowns: [row("claude-haiku-4-5", { total: 200 })],
+      modelBreakdowns: [breakdown("claude-haiku-4-5", { total: 200 })],
     }];
     const result = mergeDailyUsage(local, remote);
     assert.equal(result[0].modelBreakdowns.length, 2);
@@ -123,11 +116,11 @@ describe("mergeDailyUsage", () => {
   it("keeps same model but different source separate", () => {
     const claude = [{
       date: "2026-04-09",
-      modelBreakdowns: [row("shared-model", { total: 100 }, "claude")],
+      modelBreakdowns: [breakdown("shared-model", { total: 100, source: "claude" })],
     }];
     const codex = [{
       date: "2026-04-09",
-      modelBreakdowns: [row("shared-model", { total: 200 }, "codex")],
+      modelBreakdowns: [breakdown("shared-model", { total: 200, source: "codex" })],
     }];
     const result = mergeDailyUsage(claude, codex);
     assert.equal(result[0].modelBreakdowns.length, 2);
@@ -138,16 +131,16 @@ describe("mergeDailyUsage", () => {
   });
 
   it("sums across three or more sources", () => {
-    const mk = (n) => [{ date: "2026-04-09", modelBreakdowns: [row("opus", { total: n })] }];
+    const mk = (n: number) => [{ date: "2026-04-09", modelBreakdowns: [breakdown("opus", { total: n })] }];
     const result = mergeDailyUsage(mk(100), mk(200), mk(300));
     assert.equal(result[0].modelBreakdowns.length, 1);
     assert.equal(result[0].modelBreakdowns[0].totalTokens, 600);
   });
 
   it("does not mutate the input source arrays", () => {
-    const original = row("opus", { in: 10, total: 10 });
+    const original = breakdown("opus", { in: 10, total: 10 });
     const local = [{ date: "2026-04-09", modelBreakdowns: [original] }];
-    const remote = [{ date: "2026-04-09", modelBreakdowns: [row("opus", { in: 5, total: 5 })] }];
+    const remote = [{ date: "2026-04-09", modelBreakdowns: [breakdown("opus", { in: 5, total: 5 })] }];
     mergeDailyUsage(local, remote);
     assert.equal(original.inputTokens, 10);
     assert.equal(original.totalTokens, 10);

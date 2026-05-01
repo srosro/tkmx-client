@@ -1,6 +1,6 @@
-import type { DailyUsage, ModelBreakdown } from "./agentsview";
+import type { DailyUsage, ModelBreakdown } from "./usage";
 
-export type { DailyUsage } from "./agentsview";
+export type { DailyUsage } from "./usage";
 
 // Merge per-day usage from multiple sources. Within a date, model breakdowns
 // with the same (modelName, source) are summed — not concatenated — so the
