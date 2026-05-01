@@ -107,14 +107,16 @@ export function bucketsToDaily(buckets: UsageBucket[], source: string = "openai-
       if (inputTokensTotal === 0 && outputTokens === 0) continue;
 
       const entry = byDate[dateStr] || (byDate[dateStr] = { date: dateStr, modelBreakdowns: [] });
+      // input_tokens in the OpenAI response already includes cached; split them
+      // out so cache hits show up as cacheReadTokens (matches ccusage semantics).
+      const inputTokens = inputTokensTotal - cachedInput;
       entry.modelBreakdowns.push({
         modelName: result.model,
-        // input_tokens in the OpenAI response already includes cached; split them
-        // out so cache hits show up as cacheReadTokens (matches ccusage semantics).
-        inputTokens: inputTokensTotal - cachedInput,
+        inputTokens,
         outputTokens,
         cacheCreationTokens: 0,
         cacheReadTokens: cachedInput,
+        totalTokens: inputTokens + outputTokens + cachedInput,
         source,
       });
     }

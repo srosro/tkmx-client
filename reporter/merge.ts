@@ -19,11 +19,11 @@ export function mergeDailyUsage(...sources: DailyUsage[][]): DailyUsage[] {
           (b: ModelBreakdown) => `${b.modelName}|${b.source || ""}` === key,
         );
         if (existing) {
-          existing.inputTokens = (existing.inputTokens || 0) + (m.inputTokens || 0);
-          existing.outputTokens = (existing.outputTokens || 0) + (m.outputTokens || 0);
-          existing.cacheCreationTokens = (existing.cacheCreationTokens || 0) + (m.cacheCreationTokens || 0);
-          existing.cacheReadTokens = (existing.cacheReadTokens || 0) + (m.cacheReadTokens || 0);
-          existing.totalTokens = (existing.totalTokens || 0) + (m.totalTokens || 0);
+          existing.inputTokens += m.inputTokens;
+          existing.outputTokens += m.outputTokens;
+          existing.cacheCreationTokens += m.cacheCreationTokens;
+          existing.cacheReadTokens += m.cacheReadTokens;
+          existing.totalTokens += m.totalTokens;
           if (typeof m.cost === "number") {
             existing.cost = (existing.cost || 0) + m.cost;
           }

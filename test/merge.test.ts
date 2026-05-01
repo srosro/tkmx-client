@@ -3,15 +3,29 @@ import assert from "node:assert/strict";
 
 import { mergeDailyUsage } from "../reporter/merge";
 
+// Tiny breakdown factory — fills in zeros for whatever the tests don't
+// care about so they stay readable while still satisfying the strict
+// ModelBreakdown contract (every per-token-type counter required, plus
+// totalTokens computed once).
+const breakdown = (modelName: string, overrides: Record<string, number | string> = {}) => ({
+  modelName,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheCreationTokens: 0,
+  cacheReadTokens: 0,
+  totalTokens: 0,
+  ...overrides,
+});
+
 describe("mergeDailyUsage", () => {
   it("merges two sources with overlapping dates", () => {
     const claude = [
-      { date: "2026-04-05", modelBreakdowns: [{ modelName: "opus", totalTokens: 100 }] },
-      { date: "2026-04-06", modelBreakdowns: [{ modelName: "opus", totalTokens: 200 }] },
+      { date: "2026-04-05", modelBreakdowns: [breakdown("opus", { totalTokens: 100 })] },
+      { date: "2026-04-06", modelBreakdowns: [breakdown("opus", { totalTokens: 200 })] },
     ];
     const codex = [
-      { date: "2026-04-05", modelBreakdowns: [{ modelName: "o3", totalTokens: 50 }] },
-      { date: "2026-04-07", modelBreakdowns: [{ modelName: "o3", totalTokens: 300 }] },
+      { date: "2026-04-05", modelBreakdowns: [breakdown("o3", { totalTokens: 50 })] },
+      { date: "2026-04-07", modelBreakdowns: [breakdown("o3", { totalTokens: 300 })] },
     ];
 
     const result = mergeDailyUsage(claude, codex);
@@ -43,7 +57,7 @@ describe("mergeDailyUsage", () => {
 
   it("handles a single source", () => {
     const source = [
-      { date: "2026-04-05", modelBreakdowns: [{ modelName: "opus", totalTokens: 100 }] },
+      { date: "2026-04-05", modelBreakdowns: [breakdown("opus", { totalTokens: 100 })] },
     ];
     const result = mergeDailyUsage(source);
     assert.equal(result.length, 1);

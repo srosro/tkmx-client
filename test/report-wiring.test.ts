@@ -3,17 +3,23 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-// report.js is a program, not a module — it runs on require (exits on
+// report.ts is a program, not a module — it runs on require (exits on
 // missing USERNAME/API_KEY and writes to .env on first run), so there's
 // no ergonomic way to unit-test its call-site wiring. Extracting a
 // testable body-builder would introduce a lot of surface churn for a
 // narrow guarantee.
 //
-// These grep-style tests guard against the specific regression in the
-// original scrubbing bug: reintroducing REPORT_DAYS coupling to the
-// rolling-window blob fields (session_stats, cursor_stats), which the
-// server stores wholesale and would therefore lose history on short
-// REPORT_DAYS runs.
+// This is a single grep-style guard against the original scrubbing bug:
+// reintroducing REPORT_DAYS coupling to the rolling-window blob fields
+// (session_stats, cursor_stats), which the server stores wholesale and
+// would therefore lose history on short REPORT_DAYS runs.
+//
+// Why only cursor_stats here, not session_stats: the session_stats path
+// is covered behaviorally by `report-e2e.test.ts` (it asserts that
+// agentsview is invoked with `--since 28d` even when REPORT_DAYS=1).
+// cursor_stats is harder to E2E (would need a stub better-sqlite3 DB),
+// so the wiring grep stays as the cheaper-than-a-fixture coverage.
+// Drop this test once an equivalent E2E for cursor lands.
 
 // Grep the TypeScript source, not the compiled output — TS rewrites
 // import names (`collectCursorStats` → `cursor_1.collectCursorStats`)
@@ -23,19 +29,6 @@ const SRC = fs.readFileSync(
   path.join(__dirname, "..", "..", "reporter", "report.ts"),
   "utf-8",
 );
-
-test("collectSessionStats uses STATS_WINDOW_DAYS, not REPORT_DAYS", () => {
-  assert.match(
-    SRC,
-    /collectSessionStats\(\s*\{\s*sinceDays:\s*STATS_WINDOW_DAYS\s*\}\s*\)/,
-    "collectSessionStats should pass sinceDays: STATS_WINDOW_DAYS",
-  );
-  assert.doesNotMatch(
-    SRC,
-    /sinceDays:\s*(?:Number\()?REPORT_DAYS/,
-    "session_stats must not be windowed by REPORT_DAYS",
-  );
-});
 
 test("collectCursorStats uses statsSinceStr, not sinceStr", () => {
   assert.match(

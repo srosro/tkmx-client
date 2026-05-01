@@ -2,37 +2,52 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import { errMessage } from "./errors";
 
-export interface ModelBreakdown {
+// Raw breakdown shape from `agentsview usage daily --json`. Token counters
+// may be omitted (agentsview elides zeros) and totalTokens is always
+// computed downstream — this is the wire shape, not the internal one.
+// Kept private to this module: only parseAgentsviewOutput sees it.
+interface RawModelBreakdown {
   modelName: string;
   inputTokens?: number;
   outputTokens?: number;
   cacheCreationTokens?: number;
   cacheReadTokens?: number;
-  totalTokens?: number;
+  cost?: number;
+  source?: string;
+}
+
+// Normalized breakdown row consumed by merge.ts / report.ts. Token
+// counters are required (defaulted to 0 in the collector) so downstream
+// code can drop `(x || 0)` accumulators. totalTokens is also computed
+// once here; cost stays optional because the wire format only sets it
+// for some agents.
+export interface ModelBreakdown {
+  modelName: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
   cost?: number;
   source?: string;
 }
 
 // Raw shape we accept from `agentsview usage daily --json`. Tolerant on
 // purpose — agentsview occasionally omits the modelBreakdowns array on
-// empty days, and tests pass partial shapes for the optionality cases.
-export interface RawDailyEntry {
+// empty days.
+interface RawDailyEntry {
   date: string;
-  modelBreakdowns?: ModelBreakdown[];
+  modelBreakdowns?: RawModelBreakdown[];
 }
 
 // Normalized shape returned by parseAgentsviewOutput and consumed by
 // merge.ts / report.ts. modelBreakdowns is always present (possibly
-// empty) so downstream code doesn't need `|| []` guards or
-// `NonNullable<>` casts.
+// empty); each row has required token counters. Downstream code doesn't
+// need `|| []` guards, `(x || 0)` accumulators, or `NonNullable<>` casts.
 export interface DailyUsage {
   date: string;
   modelBreakdowns: ModelBreakdown[];
 }
-
-// Re-export under the legacy name so existing consumers keep compiling.
-// Newer code should prefer DailyUsage.
-export type DailyEntry = DailyUsage;
 
 // Resolve agentsview binary — launchd/systemd don't inherit user shell PATH,
 // so we can't rely on execvp's default search. Resolution order:
@@ -102,22 +117,29 @@ interface AgentsviewJson {
   daily?: RawDailyEntry[];
 }
 
-// agentsview breakdown rows carry per-token-type counts but no totalTokens
-// field; merge.ts sums it, so compute it here. Also fills in an empty
-// modelBreakdowns array on days where agentsview omitted it, so the
-// returned shape is the tighter `DailyUsage` (modelBreakdowns required).
+// Convert `agentsview usage daily --json` output into the normalized
+// internal shape. Defaults missing per-token-type counters to 0 and
+// computes totalTokens once, so downstream code (merge.ts / report.ts)
+// can rely on every counter being a finite number.
 export function parseAgentsviewOutput(parsed: AgentsviewJson, source: string): DailyUsage[] {
   const daily = parsed.daily || [];
   return daily.map((day) => {
-    const modelBreakdowns = (day.modelBreakdowns || []).map((m) => ({
-      ...m,
-      source,
-      totalTokens:
-        (m.inputTokens || 0) +
-        (m.outputTokens || 0) +
-        (m.cacheCreationTokens || 0) +
-        (m.cacheReadTokens || 0),
-    }));
+    const modelBreakdowns: ModelBreakdown[] = (day.modelBreakdowns || []).map((m) => {
+      const inputTokens = m.inputTokens || 0;
+      const outputTokens = m.outputTokens || 0;
+      const cacheCreationTokens = m.cacheCreationTokens || 0;
+      const cacheReadTokens = m.cacheReadTokens || 0;
+      return {
+        modelName: m.modelName,
+        inputTokens,
+        outputTokens,
+        cacheCreationTokens,
+        cacheReadTokens,
+        totalTokens: inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens,
+        cost: m.cost,
+        source,
+      };
+    });
     return { date: day.date, modelBreakdowns };
   });
 }
@@ -129,7 +151,7 @@ function queryAgent(
   noSync: boolean,
   timeoutMs: number,
   extraEnv?: Record<string, string>,
-): DailyEntry[] {
+): DailyUsage[] {
   const args = ["usage", "daily", "--json", "--breakdown", "--agent", agent, "--since", since];
   if (noSync) args.push("--no-sync");
   const execOpts: Parameters<typeof execFileSync>[2] = { encoding: "utf-8", timeout: timeoutMs };

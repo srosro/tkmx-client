@@ -3,7 +3,7 @@
   "version": "1.3.0",
   "private": true,
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "build:tests": "tsc -p tsconfig.test.json && cp -R test/fixtures dist/test/fixtures",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "report": "node dist/reporter/report.js",
@@ -11,7 +11,7 @@
     "uninstall-service": "node dist/reporter/uninstall.js",
     "test": "npm run build && npm run build:tests && node --test dist/test/*.test.js",
     "dev-report": "bash scripts/dev-report.sh",
-    "prepare": "tsc"
+    "prepare": "npm run build"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
